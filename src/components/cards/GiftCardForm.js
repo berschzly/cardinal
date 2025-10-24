@@ -263,7 +263,7 @@ const styles = StyleSheet.create({
 
   content: {
     padding: SPACING.md,
-    paddingBottom: SPACING.xl,
+    paddingBottom: Platform.OS === 'ios' ? 120 : 105, // Space for tab bar
   },
 
   infoBox: {

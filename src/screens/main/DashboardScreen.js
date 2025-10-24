@@ -6,8 +6,10 @@ import {
   FlatList,
   RefreshControl,
   TouchableOpacity,
+  Dimensions,
+  Platform,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useGiftCards } from '../../hooks/useGiftCards';
 import { useAuth } from '../../hooks/useAuth';
 import GiftCardItem from '../../components/cards/GiftCardItem';
@@ -15,7 +17,11 @@ import Loading from '../../components/common/Loading';
 import ErrorMessage from '../../components/common/ErrorMessage';
 import { COLORS, FONTS, SPACING, SUBSCRIPTION } from '../../utils/constants';
 
+const { width } = Dimensions.get('window');
+const isSmallDevice = width < 375;
+
 const DashboardScreen = ({ navigation }) => {
+  const insets = useSafeAreaInsets(); // Get safe area insets
   const { user } = useAuth();
   const {
     cards,
@@ -36,15 +42,11 @@ const DashboardScreen = ({ navigation }) => {
   };
 
   const handleCardPress = (card) => {
-    // TODO: Navigate to CardDetailsScreen in Phase 7
-    console.log('Card pressed:', card.id);
-    // navigation.navigate('CardDetails', { cardId: card.id });
+    navigation.navigate('CardDetails', { cardId: card.id });
   };
 
   const handleAddCard = () => {
-    // TODO: Navigate to AddCardScreen in Phase 6
-    console.log('Add card pressed');
-    // navigation.navigate('AddCard');
+    navigation.navigate('AddCard');
   };
 
   // Filter cards
@@ -59,6 +61,10 @@ const DashboardScreen = ({ navigation }) => {
     return 'there';
   };
 
+  // Calculate bottom padding for tab bar
+  const tabBarHeight = Platform.OS === 'ios' ? 95 : 82;
+  const bottomPadding = tabBarHeight + SPACING.md;
+
   // Empty state component
   const EmptyState = () => (
     <View style={styles.emptyState}>
@@ -67,7 +73,11 @@ const DashboardScreen = ({ navigation }) => {
       <Text style={styles.emptyText}>
         Start adding your gift cards to track balances and get reminders!
       </Text>
-      <TouchableOpacity style={styles.emptyButton} onPress={handleAddCard}>
+      <TouchableOpacity 
+        style={styles.emptyButton} 
+        onPress={handleAddCard}
+        activeOpacity={0.8}
+      >
         <Text style={styles.emptyButtonText}>Add Your First Card</Text>
       </TouchableOpacity>
     </View>
@@ -88,10 +98,12 @@ const DashboardScreen = ({ navigation }) => {
     return (
       <View style={styles.limitWarning}>
         <Text style={styles.limitWarningText}>
-          ⚠️ You've reached your card limit. Upgrade to Premium for unlimited
-          cards!
+          ⚠️ You've reached your card limit. Upgrade to Premium for unlimited cards!
         </Text>
-        <TouchableOpacity style={styles.upgradeButton}>
+        <TouchableOpacity 
+          style={styles.upgradeButton}
+          activeOpacity={0.8}
+        >
           <Text style={styles.upgradeButtonText}>Upgrade</Text>
         </TouchableOpacity>
       </View>
@@ -106,9 +118,11 @@ const DashboardScreen = ({ navigation }) => {
     <SafeAreaView style={styles.container} edges={['top']}>
       {/* Header */}
       <View style={styles.header}>
-        <View>
-          <Text style={styles.greeting}>Hey {getFirstName()}! 👋</Text>
-          <Text style={styles.subtitle}>
+        <View style={styles.headerText}>
+          <Text style={styles.greeting} numberOfLines={1}>
+            Hey {getFirstName()}! 👋
+          </Text>
+          <Text style={styles.subtitle} numberOfLines={1}>
             {activeCards.length > 0
               ? `You have ${activeCards.length} active gift card${
                   activeCards.length !== 1 ? 's' : ''
@@ -119,9 +133,13 @@ const DashboardScreen = ({ navigation }) => {
 
         {/* Add Button */}
         <TouchableOpacity
-          style={styles.addButton}
+          style={[
+            styles.addButton,
+            !canAddMore && styles.addButtonDisabled,
+          ]}
           onPress={handleAddCard}
           disabled={!canAddMore}
+          activeOpacity={0.8}
         >
           <Text style={styles.addButtonText}>+</Text>
         </TouchableOpacity>
@@ -142,21 +160,27 @@ const DashboardScreen = ({ navigation }) => {
         renderItem={({ item }) => (
           <GiftCardItem card={item} onPress={() => handleCardPress(item)} />
         )}
-        contentContainerStyle={styles.listContent}
+        contentContainerStyle={[
+          styles.listContent,
+          { paddingBottom: bottomPadding }, // Dynamic padding
+          activeCards.length === 0 && styles.listContentEmpty,
+        ]}
         ListEmptyComponent={!loading && <EmptyState />}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
             onRefresh={onRefresh}
             tintColor={COLORS.primary}
+            colors={[COLORS.primary]}
           />
         }
         showsVerticalScrollIndicator={false}
+        bounces={true}
       />
 
       {/* Used Cards Section (if any) */}
       {usedCards.length > 0 && (
-        <View style={styles.usedSection}>
+        <View style={[styles.usedSection, { marginBottom: bottomPadding }]}>
           <Text style={styles.usedTitle}>Used Cards ({usedCards.length})</Text>
           <Text style={styles.usedSubtext}>
             Tap to view your used gift cards
@@ -179,17 +203,23 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.lg,
+    backgroundColor: COLORS.background,
+  },
+
+  headerText: {
+    flex: 1,
+    marginRight: SPACING.md,
   },
 
   greeting: {
-    fontSize: FONTS.sizes['2xl'],
+    fontSize: isSmallDevice ? FONTS.sizes.xl : FONTS.sizes['2xl'],
     fontWeight: FONTS.weights.bold,
     color: COLORS.text,
     marginBottom: SPACING.xs / 2,
   },
 
   subtitle: {
-    fontSize: FONTS.sizes.base,
+    fontSize: isSmallDevice ? FONTS.sizes.sm : FONTS.sizes.base,
     color: COLORS.textSecondary,
   },
 
@@ -200,12 +230,29 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.primary,
     justifyContent: 'center',
     alignItems: 'center',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.15,
+        shadowRadius: 4,
+      },
+      android: {
+        elevation: 4,
+      },
+    }),
+  },
+
+  addButtonDisabled: {
+    backgroundColor: COLORS.disabled,
+    opacity: 0.6,
   },
 
   addButtonText: {
     fontSize: FONTS.sizes['3xl'],
     color: COLORS.background,
     fontWeight: FONTS.weights.light,
+    marginTop: -2,
   },
 
   limitInfo: {
@@ -215,6 +262,17 @@ const styles = StyleSheet.create({
     marginHorizontal: SPACING.md,
     marginBottom: SPACING.md,
     borderRadius: SPACING.sm,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.05,
+        shadowRadius: 2,
+      },
+      android: {
+        elevation: 1,
+      },
+    }),
   },
 
   limitText: {
@@ -230,8 +288,8 @@ const styles = StyleSheet.create({
     marginHorizontal: SPACING.md,
     marginBottom: SPACING.md,
     borderRadius: SPACING.sm,
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: isSmallDevice ? 'column' : 'row',
+    alignItems: isSmallDevice ? 'flex-start' : 'center',
     justifyContent: 'space-between',
   },
 
@@ -239,7 +297,8 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: FONTS.sizes.sm,
     color: COLORS.expiringSoonText,
-    marginRight: SPACING.sm,
+    marginRight: isSmallDevice ? 0 : SPACING.sm,
+    marginBottom: isSmallDevice ? SPACING.sm : 0,
   },
 
   upgradeButton: {
@@ -247,6 +306,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.sm,
     borderRadius: SPACING.sm,
+    alignSelf: isSmallDevice ? 'flex-start' : 'auto',
   },
 
   upgradeButtonText: {
@@ -257,26 +317,33 @@ const styles = StyleSheet.create({
 
   listContent: {
     paddingHorizontal: SPACING.md,
-    paddingBottom: SPACING.xl,
+    // paddingBottom is now dynamic - added inline
+  },
+
+  listContentEmpty: {
+    flexGrow: 1,
   },
 
   emptyState: {
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: SPACING['3xl'],
     paddingHorizontal: SPACING.xl,
+    minHeight: 400,
   },
 
   emptyIcon: {
-    fontSize: 80,
+    fontSize: isSmallDevice ? 64 : 80,
     marginBottom: SPACING.lg,
   },
 
   emptyTitle: {
-    fontSize: FONTS.sizes['2xl'],
+    fontSize: isSmallDevice ? FONTS.sizes.xl : FONTS.sizes['2xl'],
     fontWeight: FONTS.weights.bold,
     color: COLORS.text,
     marginBottom: SPACING.sm,
+    textAlign: 'center',
   },
 
   emptyText: {
@@ -285,6 +352,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: SPACING.lg,
     lineHeight: FONTS.sizes.base * 1.5,
+    maxWidth: 300,
   },
 
   emptyButton: {
@@ -292,6 +360,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.xl,
     paddingVertical: SPACING.md,
     borderRadius: SPACING.md,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.15,
+        shadowRadius: 4,
+      },
+      android: {
+        elevation: 4,
+      },
+    }),
   },
 
   emptyButtonText: {
@@ -304,8 +383,10 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.surface,
     padding: SPACING.md,
     marginHorizontal: SPACING.md,
-    marginBottom: SPACING.md,
+    // marginBottom is now dynamic - added inline
     borderRadius: SPACING.md,
+    borderLeftWidth: 3,
+    borderLeftColor: COLORS.textLight,
   },
 
   usedTitle: {

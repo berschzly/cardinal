@@ -2,6 +2,7 @@ import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { useAuth } from '../hooks/useAuth';
 import AuthNavigator from './AuthNavigator';
+import MainNavigator from './MainNavigator';
 import Loading from '../components/common/Loading';
 
 /**
@@ -21,12 +22,7 @@ const AppNavigator = () => {
 
   return (
     <NavigationContainer>
-      {user ? (
-        // TODO: Replace with MainNavigator in Phase 5
-        <Loading fullScreen text="Authenticated! MainNavigator coming in Phase 5..." />
-      ) : (
-        <AuthNavigator />
-      )}
+      {user ? <MainNavigator /> : <AuthNavigator />}
     </NavigationContainer>
   );
 };

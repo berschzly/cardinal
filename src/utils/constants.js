@@ -28,56 +28,67 @@ export const SUBSCRIPTION = {
 // COLORS
 // ====================================
 export const COLORS = {
-  // Primary Brand Colors
-  primary: '#6366F1', // Indigo
-  primaryDark: '#4F46E5',
-  primaryLight: '#818CF8',
+  // Primary Brand Colors (Cardinal Red)
+  primary: '#C41E3A', // Cardinal Red
+  primaryDark: '#A21830', // Deeper Cardinal Red
+  primaryLight: '#E63946', // Lighter Cardinal Red
   
-  // Secondary Colors
-  secondary: '#EC4899', // Pink
-  secondaryDark: '#DB2777',
-  secondaryLight: '#F472B6',
+  // Secondary/Accent Colors
+  accent: '#F4A261', // Soft Amber (for highlights)
+  accentDark: '#E76F51',
+  accentLight: '#F4C095',
   
-  // Accent Colors
-  accent: '#10B981', // Green (for success states)
-  accentDark: '#059669',
-  accentLight: '#34D399',
+  // Background Colors (Dark Mode)
+  background: '#121212', // Rich Charcoal (main background)
+  backgroundLight: '#1A1A1A', // Slightly lighter for variation
+  surface: '#1E1E1E', // Muted Graphite (cards, elevated surfaces)
+  surfaceLight: '#252525', // Lighter surface for nested cards
   
-  // Neutral Colors
-  background: '#FFFFFF',
-  backgroundDark: '#0F172A', // Dark mode background
-  surface: '#F8FAFC',
-  surfaceDark: '#1E293B',
+  // Text Colors (Dark Mode)
+  text: '#EDEDED', // Soft White (primary text)
+  textSecondary: '#B0B0B0', // Medium Gray (secondary text)
+  textLight: '#808080', // Light Gray (tertiary text)
+  textMuted: '#5C5C5C', // Muted Gray (disabled/placeholder)
   
-  // Text Colors
-  text: '#1E293B',
-  textSecondary: '#64748B',
-  textLight: '#94A3B8',
-  textDark: '#FFFFFF',
+  // Bluish-Grey Accents
+  blueGrey: '#334155', // Cool dark blue-grey
+  blueGreyLight: '#475569', // Lighter blue-grey
+  blueGreyDark: '#1E293B', // Darker blue-grey
   
   // Status Colors
-  success: '#10B981',
-  warning: '#F59E0B',
-  error: '#EF4444',
-  info: '#3B82F6',
+  success: '#2E7D32', // Green (darker for dark mode)
+  warning: '#EDB12B', // Amber yellow
+  error: '#D32F2F', // Error red
+  info: '#0288D1', // Info blue
   
   // UI Element Colors
-  border: '#E2E8F0',
-  borderDark: '#334155',
-  divider: '#F1F5F9',
+  border: '#2A2A2A', // Subtle border
+  borderLight: '#3A3A3A', // Slightly lighter border
+  borderFocus: '#C41E3A', // Cardinal red for focused inputs
+  divider: '#2A2A2A', // Divider lines
   
   // Special States
-  disabled: '#CBD5E1',
-  placeholder: '#94A3B8',
-  overlay: 'rgba(0, 0, 0, 0.5)',
+  disabled: '#3A3A3A',
+  placeholder: '#5C5C5C',
+  overlay: 'rgba(0, 0, 0, 0.7)', // Darker overlay for dark mode
   
-  // Card Status Colors
-  expiringSoon: '#FEF3C7', // Light yellow background
-  expiringSoonText: '#92400E', // Dark yellow text
-  expired: '#FEE2E2', // Light red background
-  expiredText: '#991B1B', // Dark red text
-  active: '#D1FAE5', // Light green background
-  activeText: '#065F46', // Dark green text
+  // Card Status Colors (adjusted for dark mode)
+  expiringSoon: '#4A3E1F', // Dark yellow-brown background
+  expiringSoonText: '#EDB12B', // Bright amber text
+  expired: '#4A2020', // Dark red background
+  expiredText: '#EF4444', // Bright red text
+  active: '#1E4620', // Dark green background
+  activeText: '#4ADE80', // Bright green text
+  
+  // Interactive Elements
+  ripple: 'rgba(196, 30, 58, 0.2)', // Cardinal red ripple effect
+  hover: 'rgba(196, 30, 58, 0.1)', // Subtle hover state
+  pressed: 'rgba(196, 30, 58, 0.3)', // Pressed state
+  
+  // Shadows (for dark mode - lighter shadows)
+  shadowLight: 'rgba(255, 255, 255, 0.05)',
+  shadowMedium: 'rgba(255, 255, 255, 0.08)',
+  shadowDark: 'rgba(0, 0, 0, 0.3)',
 };
 
 // ====================================

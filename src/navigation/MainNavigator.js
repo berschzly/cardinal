@@ -1,7 +1,8 @@
 import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { Text } from 'react-native';  // Add this import
+import { Text } from 'react-native';
 import DashboardScreen from '../screens/main/DashboardScreen';
+import AddCardScreen from '../screens/main/AddCardScreen';
 import { COLORS, FONTS } from '../utils/constants';
 
 const Tab = createBottomTabNavigator();
@@ -9,7 +10,6 @@ const Tab = createBottomTabNavigator();
 /**
  * Main Navigator
  * Bottom tab navigator for authenticated users
- * Currently only has Dashboard tab (more tabs in later phases)
  */
 const MainNavigator = () => {
   return (
@@ -43,8 +43,18 @@ const MainNavigator = () => {
         }}
       />
 
+      <Tab.Screen
+        name="AddCard"
+        component={AddCardScreen}
+        options={{
+          tabBarLabel: 'Add Card',
+          tabBarIcon: ({ color, size }) => (
+            <Text style={{ fontSize: size }}>➕</Text>
+          ),
+        }}
+      />
+
       {/* TODO: Add more tabs in later phases:
-      - AddCard tab (Phase 6)
       - Notifications tab (Phase 14)
       - Settings tab (Phase 9)
       */}

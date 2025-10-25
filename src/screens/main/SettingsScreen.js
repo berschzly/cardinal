@@ -4,33 +4,33 @@ import {
   Text,
   StyleSheet,
   ScrollView,
-  KeyboardAvoidingView,
-  Platform,
   TouchableOpacity,
+  Switch,
+  Platform,
   Alert,
+  Linking,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../../hooks/useAuth';
 import { getUserProfile, updateUserProfile } from '../../services/database';
-import Button from '../../components/common/Button';
-import Input from '../../components/common/Input';
 import Loading from '../../components/common/Loading';
 import ErrorMessage from '../../components/common/ErrorMessage';
+import { checkLocationPermission, requestLocationPermission } from '../../utils/permissions';
 import { COLORS, FONTS, SPACING, RADIUS } from '../../utils/constants';
 
-const ProfileScreen = ({ navigation }) => {
+const SettingsScreen = ({ navigation }) => {
   const insets = useSafeAreaInsets();
-  const { user, updateUserMetadata } = useAuth();
+  const { user, signOut } = useAuth();
 
-  // Form state
-  const [fullName, setFullName] = useState('');
-  const [email, setEmail] = useState('');
+  // Settings state
+  const [profile, setProfile] = useState(null);
+  const [locationEnabled, setLocationEnabled] = useState(false);
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
+  const [locationPermissionStatus, setLocationPermissionStatus] = useState('denied');
 
   // UI state
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [editing, setEditing] = useState(false);
   const [error, setError] = useState('');
 
   // Calculate bottom padding for tab bar
@@ -38,14 +38,14 @@ const ProfileScreen = ({ navigation }) => {
   const bottomPadding = tabBarHeight + SPACING.md;
 
   useEffect(() => {
-    loadProfile();
+    loadSettings();
+    checkPermissions();
   }, []);
 
-  const loadProfile = async () => {
+  const loadSettings = async () => {
     setLoading(true);
     setError('');
 
-    // Get profile from database
     const { data, error: profileError } = await getUserProfile();
 
     if (profileError) {
@@ -54,270 +54,358 @@ const ProfileScreen = ({ navigation }) => {
       return;
     }
 
-    // Set form data
     if (data) {
-      setFullName(data.full_name || user?.user_metadata?.full_name || '');
-      setEmail(user?.email || '');
+      setProfile(data);
       setNotificationsEnabled(data.notifications_enabled ?? true);
-    } else {
-      // Fallback to user metadata
-      setFullName(user?.user_metadata?.full_name || '');
-      setEmail(user?.email || '');
+      setLocationEnabled(data.location_notifications_enabled ?? false);
     }
 
     setLoading(false);
   };
 
-  const validateForm = () => {
-    if (!fullName.trim()) {
-      setError('Please enter your full name');
-      return false;
-    }
-
-    if (fullName.trim().length < 2) {
-      setError('Name must be at least 2 characters');
-      return false;
-    }
-
-    return true;
+  const checkPermissions = async () => {
+    const { granted } = await checkLocationPermission();
+    setLocationPermissionStatus(granted ? 'granted' : 'denied');
   };
 
-  const handleSave = async () => {
-    setError('');
+  const handleLocationToggle = async (value) => {
+    if (value) {
+      // User wants to enable location notifications
+      const { granted } = await requestLocationPermission();
 
-    // Validate
-    if (!validateForm()) {
-      return;
+      if (!granted) {
+        Alert.alert(
+          'Permission Required',
+          'Please enable location permissions in your device settings to receive location-based notifications.',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            {
+              text: 'Open Settings',
+              onPress: () => Linking.openSettings(),
+            },
+          ]
+        );
+        return;
+      }
+
+      setLocationPermissionStatus('granted');
     }
 
+    // Update setting
     setSaving(true);
-
-    // Update profile in database
     const { error: updateError } = await updateUserProfile({
-      full_name: fullName.trim(),
-      notifications_enabled: notificationsEnabled,
+      location_notifications_enabled: value,
     });
-
-    if (updateError) {
-      setError(updateError);
-      setSaving(false);
-      return;
-    }
-
-    // Update user metadata in Supabase Auth
-    const { error: metadataError } = await updateUserMetadata({
-      full_name: fullName.trim(),
-    });
-
     setSaving(false);
 
-    if (metadataError) {
-      setError(metadataError);
+    if (updateError) {
+      Alert.alert('Error', updateError);
       return;
     }
 
-    // Success
-    setEditing(false);
-    Alert.alert('Success', 'Profile updated successfully!');
+    setLocationEnabled(value);
   };
 
-  const handleCancel = () => {
-    // Reset form
-    setFullName(user?.user_metadata?.full_name || '');
-    setEmail(user?.email || '');
-    setEditing(false);
-    setError('');
+  const handleNotificationsToggle = async (value) => {
+    setSaving(true);
+    const { error: updateError } = await updateUserProfile({
+      notifications_enabled: value,
+    });
+    setSaving(false);
+
+    if (updateError) {
+      Alert.alert('Error', updateError);
+      return;
+    }
+
+    setNotificationsEnabled(value);
+  };
+
+  const handleSignOut = () => {
+    Alert.alert(
+      'Sign Out',
+      'Are you sure you want to sign out?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Sign Out',
+          style: 'destructive',
+          onPress: async () => {
+            await signOut();
+          },
+        },
+      ]
+    );
   };
 
   if (loading) {
-    return <Loading fullScreen text="Loading profile..." />;
+    return <Loading fullScreen text="Loading settings..." />;
   }
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <KeyboardAvoidingView
-        style={styles.keyboardView}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      {/* Header */}
+      <View style={styles.header}>
+        <Text style={styles.headerTitle}>Settings</Text>
+      </View>
+
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={[
+          styles.scrollContent,
+          { paddingBottom: bottomPadding }
+        ]}
+        showsVerticalScrollIndicator={false}
       >
-        {/* Header */}
-        <View style={styles.header}>
+        {/* Error Message */}
+        {error && (
+          <ErrorMessage
+            message={error}
+            variant="error"
+            onRetry={loadSettings}
+          />
+        )}
+
+        {/* Account Section */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Account</Text>
+
           <TouchableOpacity
-            style={styles.backButton}
-            onPress={() => navigation.goBack()}
+            style={styles.settingItem}
+            onPress={() => navigation.navigate('Profile')}
           >
-            <Text style={styles.backButtonText}>←</Text>
+            <View style={styles.settingItemLeft}>
+              <Text style={styles.settingItemIcon}>👤</Text>
+              <View style={styles.settingItemText}>
+                <Text style={styles.settingItemLabel}>Profile</Text>
+                <Text style={styles.settingItemDescription}>
+                  {user?.user_metadata?.full_name || user?.email || 'Manage your profile'}
+                </Text>
+              </View>
+            </View>
+            <Text style={styles.settingItemArrow}>›</Text>
           </TouchableOpacity>
 
-          <Text style={styles.headerTitle}>Profile</Text>
-
-          {!editing && (
-            <TouchableOpacity
-              style={styles.editButton}
-              onPress={() => setEditing(true)}
-            >
-              <Text style={styles.editButtonText}>Edit</Text>
-            </TouchableOpacity>
-          )}
-
-          {editing && <View style={styles.headerSpacer} />}
+          <TouchableOpacity
+            style={styles.settingItem}
+            onPress={() => {
+              Alert.alert(
+                'Change Password',
+                'A password reset link will be sent to your email.',
+                [
+                  { text: 'Cancel', style: 'cancel' },
+                  {
+                    text: 'Send Link',
+                    onPress: () => {
+                      // TODO: Implement in Phase 9
+                      Alert.alert('Success', 'Password reset link sent!');
+                    },
+                  },
+                ]
+              );
+            }}
+          >
+            <View style={styles.settingItemLeft}>
+              <Text style={styles.settingItemIcon}>🔒</Text>
+              <View style={styles.settingItemText}>
+                <Text style={styles.settingItemLabel}>Change Password</Text>
+                <Text style={styles.settingItemDescription}>
+                  Update your password
+                </Text>
+              </View>
+            </View>
+            <Text style={styles.settingItemArrow}>›</Text>
+          </TouchableOpacity>
         </View>
 
-        <ScrollView
-          style={styles.scrollView}
-          contentContainerStyle={[
-            styles.scrollContent,
-            { paddingBottom: bottomPadding }
-          ]}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-        >
-          {/* Profile Avatar */}
-          <View style={styles.avatarSection}>
-            <View style={styles.avatar}>
-              <Text style={styles.avatarText}>
-                {fullName.charAt(0).toUpperCase() || '?'}
+        {/* Notifications Section */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Notifications</Text>
+
+          {/* General Notifications Toggle */}
+          <View style={styles.settingItem}>
+            <View style={styles.settingItemLeft}>
+              <Text style={styles.settingItemIcon}>🔔</Text>
+              <View style={styles.settingItemText}>
+                <Text style={styles.settingItemLabel}>Enable Notifications</Text>
+                <Text style={styles.settingItemDescription}>
+                  Receive notifications about your gift cards
+                </Text>
+              </View>
+            </View>
+            <Switch
+              value={notificationsEnabled}
+              onValueChange={handleNotificationsToggle}
+              disabled={saving}
+              trackColor={{ false: COLORS.border, true: COLORS.primary }}
+              thumbColor={COLORS.background}
+              ios_backgroundColor={COLORS.border}
+            />
+          </View>
+
+          {/* Location Notifications Toggle */}
+          <View style={[styles.settingItem, !notificationsEnabled && styles.settingItemDisabled]}>
+            <View style={styles.settingItemLeft}>
+              <Text style={styles.settingItemIcon}>📍</Text>
+              <View style={styles.settingItemText}>
+                <Text style={[
+                  styles.settingItemLabel,
+                  !notificationsEnabled && styles.settingItemLabelDisabled
+                ]}>
+                  Location Notifications
+                </Text>
+                <Text style={[
+                  styles.settingItemDescription,
+                  !notificationsEnabled && styles.settingItemDescriptionDisabled
+                ]}>
+                  Get notified when near stores with gift cards
+                </Text>
+                {locationPermissionStatus === 'denied' && notificationsEnabled && (
+                  <Text style={styles.permissionWarning}>
+                    ⚠️ Location permission required
+                  </Text>
+                )}
+              </View>
+            </View>
+            <Switch
+              value={locationEnabled && notificationsEnabled}
+              onValueChange={handleLocationToggle}
+              disabled={saving || !notificationsEnabled}
+              trackColor={{ false: COLORS.border, true: COLORS.primary }}
+              thumbColor={COLORS.background}
+              ios_backgroundColor={COLORS.border}
+            />
+          </View>
+
+          {/* Info Box */}
+          <View style={styles.infoBox}>
+            <Text style={styles.infoIcon}>ℹ️</Text>
+            <View style={styles.infoContent}>
+              <Text style={styles.infoText}>
+                Location notifications work in the background to alert you when you're near a store where you have a gift card.
               </Text>
             </View>
-            {editing && (
-              <TouchableOpacity style={styles.changePhotoButton}>
-                <Text style={styles.changePhotoText}>Change Photo</Text>
+          </View>
+        </View>
+
+        {/* Subscription Section */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Subscription</Text>
+
+          <View style={styles.subscriptionCard}>
+            <View style={styles.subscriptionBadge}>
+              <Text style={styles.subscriptionBadgeText}>
+                {profile?.subscription_status === 'premium' ? '⭐ Premium' : '🆓 Free'}
+              </Text>
+            </View>
+            <Text style={styles.subscriptionTitle}>
+              {profile?.subscription_status === 'premium' ? 'Premium Plan' : 'Free Plan'}
+            </Text>
+            <Text style={styles.subscriptionDescription}>
+              {profile?.subscription_status === 'premium'
+                ? 'Unlimited gift cards and all features'
+                : 'Up to 15 gift cards'}
+            </Text>
+
+            {profile?.subscription_status !== 'premium' && (
+              <TouchableOpacity
+                style={styles.upgradeButton}
+                onPress={() => {
+                  // TODO: Navigate to subscription screen in Phase 11
+                  Alert.alert('Coming Soon', 'Premium subscription coming in Phase 11!');
+                }}
+              >
+                <Text style={styles.upgradeButtonText}>Upgrade to Premium</Text>
               </TouchableOpacity>
             )}
           </View>
+        </View>
 
-          {/* Error Message */}
-          {error && (
-            <ErrorMessage
-              message={error}
-              variant="error"
-              onRetry={() => setError('')}
-            />
-          )}
+        {/* About Section */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>About</Text>
 
-          {/* Form */}
-          {editing ? (
-            <View style={styles.form}>
-              <Input
-                label="Full Name"
-                value={fullName}
-                onChangeText={setFullName}
-                placeholder="Enter your full name"
-                autoCapitalize="words"
-                editable={editing}
-              />
-
-              <Input
-                label="Email"
-                value={email}
-                placeholder="Your email"
-                editable={false}
-                inputStyle={styles.disabledInput}
-              />
-
-              <View style={styles.emailNote}>
-                <Text style={styles.emailNoteText}>
-                  ℹ️ Email cannot be changed. Contact support if you need to update your email.
-                </Text>
-              </View>
-
-              {/* Action Buttons */}
-              <View style={styles.actions}>
-                <Button
-                  title="Save Changes"
-                  onPress={handleSave}
-                  loading={saving}
-                  style={styles.actionButton}
-                />
-
-                <Button
-                  title="Cancel"
-                  onPress={handleCancel}
-                  variant="outline"
-                  style={styles.actionButton}
-                />
+          <TouchableOpacity
+            style={styles.settingItem}
+            onPress={() => {
+              Alert.alert('Cardinal', 'Version 1.0.0\n\nA simple gift card manager.');
+            }}
+          >
+            <View style={styles.settingItemLeft}>
+              <Text style={styles.settingItemIcon}>ℹ️</Text>
+              <View style={styles.settingItemText}>
+                <Text style={styles.settingItemLabel}>App Version</Text>
+                <Text style={styles.settingItemDescription}>1.0.0</Text>
               </View>
             </View>
-          ) : (
-            // View Mode
-            <View style={styles.infoSection}>
-              <View style={styles.infoRow}>
-                <Text style={styles.infoLabel}>Full Name</Text>
-                <Text style={styles.infoValue}>{fullName || 'Not set'}</Text>
-              </View>
+            <Text style={styles.settingItemArrow}>›</Text>
+          </TouchableOpacity>
 
-              <View style={styles.infoRow}>
-                <Text style={styles.infoLabel}>Email</Text>
-                <Text style={styles.infoValue}>{email}</Text>
-              </View>
-
-              <View style={styles.infoRow}>
-                <Text style={styles.infoLabel}>Account Created</Text>
-                <Text style={styles.infoValue}>
-                  {new Date(user?.created_at).toLocaleDateString('en-US', {
-                    year: 'numeric',
-                    month: 'long',
-                    day: 'numeric',
-                  })}
-                </Text>
+          <TouchableOpacity
+            style={styles.settingItem}
+            onPress={() => {
+              Linking.openURL('https://cardinal.app/privacy'); // TODO: Replace with actual URL
+            }}
+          >
+            <View style={styles.settingItemLeft}>
+              <Text style={styles.settingItemIcon}>🔒</Text>
+              <View style={styles.settingItemText}>
+                <Text style={styles.settingItemLabel}>Privacy Policy</Text>
               </View>
             </View>
-          )}
+            <Text style={styles.settingItemArrow}>›</Text>
+          </TouchableOpacity>
 
-          {/* Account Actions */}
-          {!editing && (
-            <View style={styles.accountActions}>
-              <Text style={styles.accountActionsTitle}>Account Actions</Text>
-
-              <TouchableOpacity
-                style={styles.actionItem}
-                onPress={() => {
-                  Alert.alert(
-                    'Change Password',
-                    'A password reset link will be sent to your email.',
-                    [
-                      { text: 'Cancel', style: 'cancel' },
-                      {
-                        text: 'Send Link',
-                        onPress: () => {
-                          // TODO: Implement password reset
-                          Alert.alert('Success', 'Password reset link sent to your email!');
-                        },
-                      },
-                    ]
-                  );
-                }}
-              >
-                <Text style={styles.actionItemText}>Change Password</Text>
-                <Text style={styles.actionItemIcon}>›</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[styles.actionItem, styles.dangerActionItem]}
-                onPress={() => {
-                  Alert.alert(
-                    'Delete Account',
-                    'This action cannot be undone. All your gift cards will be permanently deleted.',
-                    [
-                      { text: 'Cancel', style: 'cancel' },
-                      {
-                        text: 'Delete',
-                        style: 'destructive',
-                        onPress: () => {
-                          // TODO: Implement account deletion
-                          Alert.alert('Account deletion coming soon');
-                        },
-                      },
-                    ]
-                  );
-                }}
-              >
-                <Text style={styles.dangerActionItemText}>Delete Account</Text>
-                <Text style={styles.actionItemIcon}>›</Text>
-              </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.settingItem}
+            onPress={() => {
+              Linking.openURL('https://cardinal.app/terms'); // TODO: Replace with actual URL
+            }}
+          >
+            <View style={styles.settingItemLeft}>
+              <Text style={styles.settingItemIcon}>📄</Text>
+              <View style={styles.settingItemText}>
+                <Text style={styles.settingItemLabel}>Terms of Service</Text>
+              </View>
             </View>
-          )}
-        </ScrollView>
-      </KeyboardAvoidingView>
+            <Text style={styles.settingItemArrow}>›</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Sign Out Button */}
+        <TouchableOpacity
+          style={styles.signOutButton}
+          onPress={handleSignOut}
+          activeOpacity={0.8}
+        >
+          <Text style={styles.signOutButtonText}>Sign Out</Text>
+        </TouchableOpacity>
+
+        {/* Delete Account Button */}
+        <TouchableOpacity
+          style={styles.deleteButton}
+          onPress={() => {
+            Alert.alert(
+              'Delete Account',
+              'This action cannot be undone. All your gift cards will be permanently deleted.',
+              [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                  text: 'Delete',
+                  style: 'destructive',
+                  onPress: () => {
+                    // TODO: Implement in Phase 9
+                    Alert.alert('Coming Soon', 'Account deletion coming soon');
+                  },
+                },
+              ]
+            );
+          }}
+          activeOpacity={0.8}
+        >
+          <Text style={styles.deleteButtonText}>Delete Account</Text>
+        </TouchableOpacity>
+      </ScrollView>
     </SafeAreaView>
   );
 };
@@ -328,48 +416,18 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.background,
   },
 
-  keyboardView: {
-    flex: 1,
-  },
-
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
     paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.md,
+    paddingVertical: SPACING.lg,
     borderBottomWidth: 1,
     borderBottomColor: COLORS.border,
     backgroundColor: COLORS.background,
   },
 
-  backButton: {
-    padding: SPACING.sm,
-  },
-
-  backButtonText: {
-    fontSize: FONTS.sizes['3xl'],
-    color: COLORS.primary,
-  },
-
   headerTitle: {
-    fontSize: FONTS.sizes.xl,
-    fontWeight: FONTS.weights.semiBold,
+    fontSize: FONTS.sizes['2xl'],
+    fontWeight: FONTS.weights.bold,
     color: COLORS.text,
-  },
-
-  editButton: {
-    padding: SPACING.sm,
-  },
-
-  editButtonText: {
-    fontSize: FONTS.sizes.base,
-    fontWeight: FONTS.weights.semiBold,
-    color: COLORS.primary,
-  },
-
-  headerSpacer: {
-    width: 60,
   },
 
   scrollView: {
@@ -380,106 +438,21 @@ const styles = StyleSheet.create({
     padding: SPACING.md,
   },
 
-  avatarSection: {
-    alignItems: 'center',
+  section: {
     marginBottom: SPACING.xl,
   },
 
-  avatar: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    backgroundColor: COLORS.primary,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: SPACING.sm,
-  },
-
-  avatarText: {
-    fontSize: FONTS.sizes['4xl'],
-    fontWeight: FONTS.weights.bold,
-    color: COLORS.background,
-  },
-
-  changePhotoButton: {
-    paddingVertical: SPACING.xs,
-  },
-
-  changePhotoText: {
+  sectionTitle: {
     fontSize: FONTS.sizes.sm,
-    color: COLORS.primary,
-    fontWeight: FONTS.weights.medium,
-  },
-
-  form: {
-    marginBottom: SPACING.xl,
-  },
-
-  disabledInput: {
-    backgroundColor: COLORS.disabled,
-    color: COLORS.textSecondary,
-  },
-
-  emailNote: {
-    backgroundColor: COLORS.surface,
-    padding: SPACING.sm,
-    borderRadius: RADIUS.sm,
-    marginTop: -SPACING.sm,
-    marginBottom: SPACING.md,
-    borderLeftWidth: 3,
-    borderLeftColor: COLORS.info,
-  },
-
-  emailNoteText: {
-    fontSize: FONTS.sizes.xs,
-    color: COLORS.textSecondary,
-    lineHeight: FONTS.sizes.xs * 1.5,
-  },
-
-  actions: {
-    marginTop: SPACING.lg,
-  },
-
-  actionButton: {
-    marginBottom: SPACING.sm,
-  },
-
-  infoSection: {
-    marginBottom: SPACING.xl,
-  },
-
-  infoRow: {
-    backgroundColor: COLORS.surface,
-    padding: SPACING.md,
-    borderRadius: RADIUS.md,
-    marginBottom: SPACING.sm,
-  },
-
-  infoLabel: {
-    fontSize: FONTS.sizes.sm,
-    color: COLORS.textSecondary,
-    marginBottom: SPACING.xs,
-  },
-
-  infoValue: {
-    fontSize: FONTS.sizes.base,
-    fontWeight: FONTS.weights.medium,
-    color: COLORS.text,
-  },
-
-  accountActions: {
-    marginTop: SPACING.lg,
-  },
-
-  accountActionsTitle: {
-    fontSize: FONTS.sizes.base,
     fontWeight: FONTS.weights.semiBold,
-    color: COLORS.text,
+    color: COLORS.textSecondary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
     marginBottom: SPACING.sm,
     paddingHorizontal: SPACING.xs,
   },
 
-  actionItem: {
+  settingItem: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -487,30 +460,179 @@ const styles = StyleSheet.create({
     padding: SPACING.md,
     borderRadius: RADIUS.md,
     marginBottom: SPACING.sm,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.05,
+        shadowRadius: 2,
+      },
+      android: {
+        elevation: 1,
+      },
+    }),
   },
 
-  actionItemText: {
+  settingItemDisabled: {
+    opacity: 0.5,
+  },
+
+  settingItemLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+
+  settingItemIcon: {
+    fontSize: 24,
+    marginRight: SPACING.md,
+  },
+
+  settingItemText: {
+    flex: 1,
+  },
+
+  settingItemLabel: {
     fontSize: FONTS.sizes.base,
     fontWeight: FONTS.weights.medium,
     color: COLORS.text,
+    marginBottom: SPACING.xs / 2,
   },
 
-  actionItemIcon: {
+  settingItemLabelDisabled: {
+    color: COLORS.textLight,
+  },
+
+  settingItemDescription: {
+    fontSize: FONTS.sizes.sm,
+    color: COLORS.textSecondary,
+    lineHeight: FONTS.sizes.sm * 1.4,
+  },
+
+  settingItemDescriptionDisabled: {
+    color: COLORS.textLight,
+  },
+
+  settingItemArrow: {
     fontSize: FONTS.sizes['2xl'],
     color: COLORS.textLight,
     fontWeight: FONTS.weights.light,
+    marginLeft: SPACING.sm,
   },
 
-  dangerActionItem: {
+  permissionWarning: {
+    fontSize: FONTS.sizes.xs,
+    color: COLORS.warning,
+    marginTop: SPACING.xs / 2,
+  },
+
+  infoBox: {
+    flexDirection: 'row',
+    backgroundColor: COLORS.surface,
+    padding: SPACING.md,
+    borderRadius: RADIUS.md,
+    marginTop: SPACING.sm,
+    borderLeftWidth: 3,
+    borderLeftColor: COLORS.info,
+  },
+
+  infoIcon: {
+    fontSize: 20,
+    marginRight: SPACING.sm,
+  },
+
+  infoContent: {
+    flex: 1,
+  },
+
+  infoText: {
+    fontSize: FONTS.sizes.sm,
+    color: COLORS.textSecondary,
+    lineHeight: FONTS.sizes.sm * 1.5,
+  },
+
+  subscriptionCard: {
+    backgroundColor: COLORS.surface,
+    padding: SPACING.lg,
+    borderRadius: RADIUS.lg,
+    borderWidth: 2,
+    borderColor: COLORS.border,
+    alignItems: 'center',
+  },
+
+  subscriptionBadge: {
+    backgroundColor: COLORS.primary + '15',
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.xs,
+    borderRadius: RADIUS.full,
+    marginBottom: SPACING.sm,
+  },
+
+  subscriptionBadgeText: {
+    fontSize: FONTS.sizes.sm,
+    fontWeight: FONTS.weights.semiBold,
+    color: COLORS.primary,
+  },
+
+  subscriptionTitle: {
+    fontSize: FONTS.sizes.xl,
+    fontWeight: FONTS.weights.bold,
+    color: COLORS.text,
+    marginBottom: SPACING.xs,
+  },
+
+  subscriptionDescription: {
+    fontSize: FONTS.sizes.sm,
+    color: COLORS.textSecondary,
+    textAlign: 'center',
+    marginBottom: SPACING.md,
+  },
+
+  upgradeButton: {
+    backgroundColor: COLORS.primary,
+    paddingHorizontal: SPACING.xl,
+    paddingVertical: SPACING.md,
+    borderRadius: RADIUS.md,
+    marginTop: SPACING.sm,
+  },
+
+  upgradeButtonText: {
+    fontSize: FONTS.sizes.base,
+    fontWeight: FONTS.weights.semiBold,
+    color: COLORS.background,
+  },
+
+  signOutButton: {
+    backgroundColor: COLORS.surface,
+    padding: SPACING.md,
+    borderRadius: RADIUS.md,
+    alignItems: 'center',
+    marginTop: SPACING.lg,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+
+  signOutButtonText: {
+    fontSize: FONTS.sizes.base,
+    fontWeight: FONTS.weights.semiBold,
+    color: COLORS.text,
+  },
+
+  deleteButton: {
+    backgroundColor: COLORS.surface,
+    padding: SPACING.md,
+    borderRadius: RADIUS.md,
+    alignItems: 'center',
+    marginTop: SPACING.sm,
     borderWidth: 1,
     borderColor: COLORS.error,
   },
 
-  dangerActionItemText: {
+  deleteButtonText: {
     fontSize: FONTS.sizes.base,
-    fontWeight: FONTS.weights.medium,
+    fontWeight: FONTS.weights.semiBold,
     color: COLORS.error,
   },
 });
 
-export default ProfileScreen;
+export default SettingsScreen;

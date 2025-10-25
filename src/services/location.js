@@ -1,10 +1,29 @@
 import * as Location from 'expo-location';
 import { checkLocationPermission } from '../utils/permissions';
+import { getUserProfile } from './database';
 import { LOCATION } from '../utils/constants';
 
 // ====================================
 // LOCATION SERVICE
 // ====================================
+
+/**
+ * Check if location notifications are enabled for user
+ * @returns {Promise<boolean>}
+ */
+export const areLocationNotificationsEnabled = async () => {
+  try {
+    const { data } = await getUserProfile();
+    
+    if (!data) return false;
+    
+    // Check both general notifications AND location notifications
+    return data.notifications_enabled && data.location_notifications_enabled;
+  } catch (error) {
+    console.error('Check location notifications error:', error);
+    return false;
+  }
+};
 
 /**
  * Get current location
@@ -107,19 +126,30 @@ export const formatDistance = (meters) => {
 };
 
 /**
- * Find nearby gift cards
+ * Find nearby gift cards (respects user notification preferences)
  * @param {object} userLocation - User's location {latitude, longitude}
  * @param {array} giftCards - Array of gift cards with store_latitude/longitude
  * @param {number} radiusMeters - Search radius in meters
+ * @param {boolean} respectPreferences - Whether to check user preferences (default: true)
  * @returns {array} Array of nearby gift cards with distance
  */
-export const findNearbyCards = (
+export const findNearbyCards = async (
   userLocation,
   giftCards,
-  radiusMeters = LOCATION.geofenceRadiusMeters
+  radiusMeters = LOCATION.geofenceRadiusMeters,
+  respectPreferences = true
 ) => {
   if (!userLocation || !giftCards || giftCards.length === 0) {
     return [];
+  }
+
+  // Check if user has location notifications enabled
+  if (respectPreferences) {
+    const enabled = await areLocationNotificationsEnabled();
+    if (!enabled) {
+      console.log('Location notifications disabled by user');
+      return [];
+    }
   }
 
   const nearbyCards = giftCards
@@ -209,4 +239,5 @@ export default {
   findNearbyCards,
   watchLocation,
   stopWatchingLocation,
+  areLocationNotificationsEnabled,
 };

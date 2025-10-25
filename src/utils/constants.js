@@ -374,21 +374,21 @@ export const ONBOARDING = {
   slides: [
     {
       id: 1,
+      icon: '🎁',
       title: 'Never Forget Your Gift Cards',
       description: 'Upload all your gift cards in one place. No more digging through wallets or email.',
-      icon: 'gift',
     },
     {
       id: 2,
+      icon: '🔔',
       title: 'Get Smart Reminders',
       description: "We'll ping you when you're near a store where you have an unused gift card.",
-      icon: 'bell',
     },
     {
       id: 3,
+      icon: '📈',
       title: 'Track & Save',
       description: 'Monitor balances, expiration dates, and never let money go to waste again.',
-      icon: 'trending-up',
     },
   ],
 };
@@ -447,3 +447,4 @@ export const DEV = {
   enableDebugBorders: false,
   skipOnboarding: false, // Set to true to skip onboarding during development
 };
+

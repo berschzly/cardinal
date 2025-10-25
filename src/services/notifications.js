@@ -3,6 +3,8 @@ import * as Device from 'expo-device';
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 import { supabase } from './supabase';
+import { daysUntilExpiration, isCardExpiringSoon } from '../utils/helpers';
+import { NOTIFICATIONS } from '../utils/constants';
 
 // Configure notification behavior
 Notifications.setNotificationHandler({
@@ -312,6 +314,237 @@ export const setupNotificationListeners = (
   };
 };
 
+// ====================================
+// PHASE 16: EXPIRATION REMINDERS
+// ====================================
+
+/**
+ * Schedule expiration reminder notification
+ * @param {object} card - Gift card object
+ * @param {number} daysBeforeExpiration - Days before to send reminder (3, 7, 14, 30)
+ * @returns {Promise<{notificationId, error}>}
+ */
+export const scheduleExpirationReminder = async (card, daysBeforeExpiration = 7) => {
+  try {
+    if (!card.expiration_date) {
+      return { notificationId: null, error: 'No expiration date' };
+    }
+
+    const expDate = new Date(card.expiration_date);
+    const reminderDate = new Date(expDate);
+    reminderDate.setDate(expDate.getDate() - daysBeforeExpiration);
+    reminderDate.setHours(9, 0, 0, 0); // 9 AM reminder
+
+    const now = new Date();
+
+    // Don't schedule if reminder date has passed
+    if (reminderDate <= now) {
+      return { notificationId: null, error: 'Reminder date has passed' };
+    }
+
+    const notificationId = await Notifications.scheduleNotificationAsync({
+      content: {
+        title: `⏰ Gift Card Expiring Soon`,
+        body: `Your ${card.store_name} gift card expires in ${daysBeforeExpiration} days. Balance: $${card.balance || 'Unknown'}`,
+        data: {
+          type: 'expiration',
+          cardId: card.id,
+          storeName: card.store_name,
+          daysUntilExpiration: daysBeforeExpiration,
+        },
+        sound: true,
+        priority: Notifications.AndroidNotificationPriority.HIGH,
+      },
+      trigger: {
+        date: reminderDate,
+      },
+    });
+
+    // Store notification in database
+    await saveNotificationToDatabase({
+      user_id: card.user_id,
+      gift_card_id: card.id,
+      type: 'expiration',
+      title: '⏰ Gift Card Expiring Soon',
+      message: `Your ${card.store_name} gift card expires in ${daysBeforeExpiration} days`,
+      scheduled_for: reminderDate.toISOString(),
+      notification_identifier: notificationId,
+    });
+
+    return { notificationId, error: null };
+  } catch (error) {
+    console.error('Schedule expiration reminder error:', error);
+    return { notificationId: null, error: error.message };
+  }
+};
+
+/**
+ * Schedule all expiration reminders for a card
+ * @param {object} card - Gift card object
+ * @returns {Promise<{count, error}>}
+ */
+export const scheduleAllExpirationReminders = async (card) => {
+  try {
+    if (!card.expiration_date || card.expiration_reminders_enabled === false) {
+      return { count: 0, error: 'Reminders not enabled or no expiration date' };
+    }
+
+    const daysUntil = daysUntilExpiration(card.expiration_date);
+
+    if (daysUntil === null || daysUntil < 0) {
+      return { count: 0, error: 'Card expired or invalid date' };
+    }
+
+    const reminders = [];
+    const reminderDays = [3, 7, 14, 30]; // Days before expiration to remind
+
+    for (const days of reminderDays) {
+      if (daysUntil >= days) {
+        const result = await scheduleExpirationReminder(card, days);
+        if (result.notificationId) {
+          reminders.push(result.notificationId);
+        }
+      }
+    }
+
+    return { count: reminders.length, error: null };
+  } catch (error) {
+    console.error('Schedule all expiration reminders error:', error);
+    return { count: 0, error: error.message };
+  }
+};
+
+/**
+ * Cancel all notifications for a card
+ * @param {string} cardId - Gift card ID
+ * @returns {Promise<{error}>}
+ */
+export const cancelCardNotifications = async (cardId) => {
+  try {
+    // Get all scheduled notifications
+    const scheduled = await Notifications.getAllScheduledNotificationsAsync();
+
+    // Filter notifications for this card
+    const cardNotifications = scheduled.filter(
+      (notif) => notif.content.data?.cardId === cardId
+    );
+
+    // Cancel each notification
+    for (const notif of cardNotifications) {
+      await Notifications.cancelScheduledNotificationAsync(notif.identifier);
+    }
+
+    // Mark notifications as cancelled in database
+    await supabase
+      .from('notifications')
+      .update({ cancelled_at: new Date().toISOString() })
+      .eq('gift_card_id', cardId)
+      .is('sent_at', null);
+
+    return { error: null };
+  } catch (error) {
+    console.error('Cancel card notifications error:', error);
+    return { error: error.message };
+  }
+};
+
+/**
+ * Check and schedule reminders for all user's cards
+ * @param {string} userId - User ID
+ * @returns {Promise<{count, error}>}
+ */
+export const checkAndScheduleAllReminders = async (userId) => {
+  try {
+    // Get all active cards with expiration dates
+    const { data: cards, error } = await supabase
+      .from('gift_cards')
+      .select('*')
+      .eq('user_id', userId)
+      .eq('is_used', false)
+      .not('expiration_date', 'is', null);
+
+    if (error) throw error;
+
+    let totalScheduled = 0;
+
+    for (const card of cards) {
+      const { count } = await scheduleAllExpirationReminders(card);
+      totalScheduled += count;
+    }
+
+    return { count: totalScheduled, error: null };
+  } catch (error) {
+    console.error('Check and schedule all reminders error:', error);
+    return { count: 0, error: error.message };
+  }
+};
+
+/**
+ * Save notification to database
+ * @param {object} notification - Notification data
+ * @returns {Promise<{error}>}
+ */
+const saveNotificationToDatabase = async (notification) => {
+  try {
+    const { error } = await supabase.from('notifications').insert([
+      {
+        user_id: notification.user_id,
+        gift_card_id: notification.gift_card_id,
+        type: notification.type,
+        title: notification.title,
+        message: notification.message,
+        scheduled_for: notification.scheduled_for,
+        notification_identifier: notification.notification_identifier,
+      },
+    ]);
+
+    if (error) throw error;
+
+    return { error: null };
+  } catch (error) {
+    console.error('Save notification to database error:', error);
+    return { error: error.message };
+  }
+};
+
+/**
+ * Get upcoming notifications
+ * @param {string} userId - User ID
+ * @returns {Promise<{notifications, error}>}
+ */
+export const getUpcomingNotifications = async (userId) => {
+  try {
+    const { data, error } = await supabase
+      .from('notifications')
+      .select('*, gift_cards(*)')
+      .eq('user_id', userId)
+      .is('sent_at', null)
+      .is('cancelled_at', null)
+      .order('scheduled_for', { ascending: true });
+
+    if (error) throw error;
+
+    return { notifications: data, error: null };
+  } catch (error) {
+    console.error('Get upcoming notifications error:', error);
+    return { notifications: [], error: error.message };
+  }
+};
+
+/**
+ * Get all scheduled local notifications (for debugging)
+ * @returns {Promise<Array>}
+ */
+export const getAllScheduledNotifications = async () => {
+  try {
+    const scheduled = await Notifications.getAllScheduledNotificationsAsync();
+    return scheduled;
+  } catch (error) {
+    console.error('Get all scheduled notifications error:', error);
+    return [];
+  }
+};
+
 export default {
   isPushNotificationSupported,
   requestNotificationPermission,
@@ -322,4 +555,11 @@ export default {
   scheduleLocalNotification,
   cancelAllNotifications,
   setupNotificationListeners,
+  // Phase 16: Expiration reminders
+  scheduleExpirationReminder,
+  scheduleAllExpirationReminders,
+  cancelCardNotifications,
+  checkAndScheduleAllReminders,
+  getUpcomingNotifications,
+  getAllScheduledNotifications,
 };

@@ -106,6 +106,7 @@ const WelcomeScreen = ({ navigation }) => {
     navigation.replace('Login');
   };
 
+  // PERMISSION SCREEN - Shows after onboarding
   if (showPermissions) {
     return (
       <SafeAreaView style={styles.container}>
@@ -123,6 +124,7 @@ const WelcomeScreen = ({ navigation }) => {
     );
   }
 
+  // ONBOARDING SLIDES SCREEN
   return (
     <SafeAreaView style={styles.container}>
       {/* Skip Button */}

@@ -13,15 +13,49 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useGiftCards } from '../../hooks/useGiftCards';
 import { useAuth } from '../../hooks/useAuth';
 import GiftCardItem from '../../components/cards/GiftCardItem';
+import ExpirationBadge from '../../components/cards/ExpirationBadge';
 import Loading from '../../components/common/Loading';
 import ErrorMessage from '../../components/common/ErrorMessage';
 import { COLORS, FONTS, SPACING, SUBSCRIPTION } from '../../utils/constants';
+import { isCardExpiringSoon, isCardExpired, daysUntilExpiration } from '../../utils/helpers';
 
 const { width } = Dimensions.get('window');
 const isSmallDevice = width < 375;
 
+/**
+ * Sort cards by expiration status
+ * Priority: Expired > Expiring Soon (by days) > Regular (by date added)
+ */
+const sortCardsByExpiration = (cards) => {
+  return [...cards].sort((a, b) => {
+    const aExpired = isCardExpired(a.expiration_date);
+    const bExpired = isCardExpired(b.expiration_date);
+
+    // Expired cards first
+    if (aExpired && !bExpired) return -1;
+    if (!aExpired && bExpired) return 1;
+
+    const aExpiring = isCardExpiringSoon(a.expiration_date);
+    const bExpiring = isCardExpiringSoon(b.expiration_date);
+
+    // Expiring cards next
+    if (aExpiring && !bExpiring) return -1;
+    if (!aExpiring && bExpiring) return 1;
+
+    // If both expiring, sort by days until expiration (soonest first)
+    if (aExpiring && bExpiring) {
+      const aDays = daysUntilExpiration(a.expiration_date);
+      const bDays = daysUntilExpiration(b.expiration_date);
+      return (aDays || 999) - (bDays || 999);
+    }
+
+    // Default: most recently added first
+    return new Date(b.created_at) - new Date(a.created_at);
+  });
+};
+
 const DashboardScreen = ({ navigation }) => {
-  const insets = useSafeAreaInsets(); // Get safe area insets
+  const insets = useSafeAreaInsets();
   const { user } = useAuth();
   const {
     cards,
@@ -49,9 +83,14 @@ const DashboardScreen = ({ navigation }) => {
     navigation.navigate('AddCard');
   };
 
-  // Filter cards
+  // Filter and sort cards
   const activeCards = cards.filter((card) => !card.is_used);
+  const sortedActiveCards = sortCardsByExpiration(activeCards);
   const usedCards = cards.filter((card) => card.is_used);
+
+  // Count cards by expiration status
+  const expiringCards = activeCards.filter((card) => isCardExpiringSoon(card.expiration_date));
+  const expiredCards = activeCards.filter((card) => isCardExpired(card.expiration_date));
 
   // Get user's first name
   const getFirstName = () => {
@@ -110,6 +149,39 @@ const DashboardScreen = ({ navigation }) => {
     );
   };
 
+  // Expiration Alert Banner (if cards expiring/expired)
+  const ExpirationAlertBanner = () => {
+    if (expiredCards.length === 0 && expiringCards.length === 0) return null;
+
+    return (
+      <View style={styles.alertBanner}>
+        {expiredCards.length > 0 && (
+          <Text style={styles.alertText}>
+            ❌ {expiredCards.length} card{expiredCards.length > 1 ? 's have' : ' has'} expired
+          </Text>
+        )}
+        {expiringCards.length > 0 && (
+          <Text style={styles.alertText}>
+            ⏰ {expiringCards.length} card{expiringCards.length > 1 ? 's are' : ' is'} expiring soon
+          </Text>
+        )}
+      </View>
+    );
+  };
+
+  // Render individual card with expiration badge
+  const renderCard = ({ item }) => (
+    <View style={styles.cardContainer}>
+      <GiftCardItem card={item} onPress={() => handleCardPress(item)} />
+      {item.expiration_date && (
+        <ExpirationBadge 
+          expirationDate={item.expiration_date} 
+          style={styles.expirationBadge} 
+        />
+      )}
+    </View>
+  );
+
   if (loading && cards.length === 0) {
     return <Loading fullScreen text="Loading your gift cards..." />;
   }
@@ -148,6 +220,9 @@ const DashboardScreen = ({ navigation }) => {
       {/* Card Limit Info */}
       <CardLimitInfo />
 
+      {/* Expiration Alert Banner */}
+      <ExpirationAlertBanner />
+
       {/* Error Message */}
       {error && (
         <ErrorMessage message={error} variant="error" onRetry={refresh} />
@@ -155,14 +230,12 @@ const DashboardScreen = ({ navigation }) => {
 
       {/* Gift Cards List */}
       <FlatList
-        data={activeCards}
+        data={sortedActiveCards}
         keyExtractor={(item) => item.id}
-        renderItem={({ item }) => (
-          <GiftCardItem card={item} onPress={() => handleCardPress(item)} />
-        )}
+        renderItem={renderCard}
         contentContainerStyle={[
           styles.listContent,
-          { paddingBottom: bottomPadding }, // Dynamic padding
+          { paddingBottom: bottomPadding },
           activeCards.length === 0 && styles.listContentEmpty,
         ]}
         ListEmptyComponent={!loading && <EmptyState />}
@@ -315,9 +388,35 @@ const styles = StyleSheet.create({
     color: COLORS.background,
   },
 
+  alertBanner: {
+    backgroundColor: COLORS.expired,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.md,
+    marginHorizontal: SPACING.md,
+    marginBottom: SPACING.md,
+    borderRadius: SPACING.sm,
+    borderLeftWidth: 4,
+    borderLeftColor: COLORS.error,
+  },
+
+  alertText: {
+    fontSize: FONTS.sizes.sm,
+    color: COLORS.expiredText,
+    fontWeight: FONTS.weights.semiBold,
+    marginBottom: SPACING.xs / 2,
+  },
+
+  cardContainer: {
+    marginBottom: SPACING.md,
+  },
+
+  expirationBadge: {
+    marginTop: SPACING.xs,
+    marginLeft: SPACING.sm,
+  },
+
   listContent: {
     paddingHorizontal: SPACING.md,
-    // paddingBottom is now dynamic - added inline
   },
 
   listContentEmpty: {
@@ -383,7 +482,6 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.surface,
     padding: SPACING.md,
     marginHorizontal: SPACING.md,
-    // marginBottom is now dynamic - added inline
     borderRadius: SPACING.md,
     borderLeftWidth: 3,
     borderLeftColor: COLORS.textLight,

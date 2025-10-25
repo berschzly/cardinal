@@ -80,7 +80,11 @@ export const formatDate = (dateString) => {
 export const daysUntilExpiration = (expirationDate) => {
   if (!expirationDate) return null;
   const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  
   const expDate = new Date(expirationDate);
+  expDate.setHours(0, 0, 0, 0);
+  
   const diffTime = expDate - today;
   const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
   return diffDays;
@@ -93,8 +97,94 @@ export const daysUntilExpiration = (expirationDate) => {
  * @returns {boolean}
  */
 export const isCardExpiringSoon = (expirationDate, daysThreshold = 30) => {
+  if (!expirationDate) return false;
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const expDate = new Date(expirationDate);
+  expDate.setHours(0, 0, 0, 0);
+
+  // Check if card is already expired
+  if (expDate < today) return false;
+
+  // Calculate days until expiration
+  const diffTime = expDate - today;
+  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+  return diffDays <= daysThreshold && diffDays >= 0;
+};
+
+/**
+ * Check if card is expired
+ * @param {string} expirationDate - YYYY-MM-DD format
+ * @returns {boolean}
+ */
+export const isCardExpired = (expirationDate) => {
+  if (!expirationDate) return false;
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const expDate = new Date(expirationDate);
+  expDate.setHours(0, 0, 0, 0);
+
+  return expDate < today;
+};
+
+/**
+ * Get expiration status
+ * @param {string} expirationDate - YYYY-MM-DD format
+ * @returns {object} {status: 'expired'|'critical'|'expiring'|'valid', days: number, message: string}
+ */
+export const getExpirationStatus = (expirationDate) => {
+  if (!expirationDate) {
+    return { status: 'valid', days: null, message: 'No expiration date' };
+  }
+
   const days = daysUntilExpiration(expirationDate);
-  return days !== null && days >= 0 && days <= daysThreshold;
+
+  if (days === null) {
+    return { status: 'valid', days: null, message: 'No expiration date' };
+  }
+
+  if (days < 0) {
+    return {
+      status: 'expired',
+      days: Math.abs(days),
+      message: `Expired ${Math.abs(days)} days ago`,
+    };
+  }
+
+  if (days === 0) {
+    return {
+      status: 'critical',
+      days: 0,
+      message: 'Expires today!',
+    };
+  }
+
+  if (days <= 7) {
+    return {
+      status: 'critical',
+      days,
+      message: `Expires in ${days} ${days === 1 ? 'day' : 'days'}`,
+    };
+  }
+
+  if (days <= 30) {
+    return {
+      status: 'expiring',
+      days,
+      message: `Expires in ${days} days`,
+    };
+  }
+
+  return {
+    status: 'valid',
+    days,
+    message: `Expires in ${days} days`,
+  };
 };
 
 /**
@@ -143,6 +233,8 @@ export default {
   formatDate,
   daysUntilExpiration,
   isCardExpiringSoon,
+  isCardExpired,
+  getExpirationStatus,
   isValidEmail,
   validatePasswordStrength,
 };

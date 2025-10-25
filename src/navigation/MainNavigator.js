@@ -2,10 +2,11 @@ import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { Text, Platform, StyleSheet, View } from 'react-native';
-import { BlurView } from 'expo-blur';
 import DashboardScreen from '../screens/main/DashboardScreen';
 import CardDetailsScreen from '../screens/main/CardDetailsScreen';
 import AddCardScreen from '../screens/main/AddCardScreen';
+import SettingsScreen from '../screens/main/SettingsScreen';
+import ProfileScreen from '../screens/main/ProfileScreen';
 import { COLORS, FONTS, SPACING } from '../utils/constants';
 
 const Tab = createBottomTabNavigator();
@@ -36,7 +37,7 @@ const TabBarIcon = ({ focused, icon, label }) => {
   );
 };
 
-// Dashboard Stack Navigator
+// Dashboard Stack Navigator (includes CardDetailsScreen)
 const DashboardStack = () => {
   return (
     <Stack.Navigator
@@ -52,8 +53,24 @@ const DashboardStack = () => {
   );
 };
 
+// Settings Stack Navigator (includes ProfileScreen)
+const SettingsStack = () => {
+  return (
+    <Stack.Navigator
+      screenOptions={{
+        headerShown: false,
+        contentStyle: { backgroundColor: COLORS.background },
+        animation: 'slide_from_right',
+      }}
+    >
+      <Stack.Screen name="SettingsHome" component={SettingsScreen} />
+      <Stack.Screen name="Profile" component={ProfileScreen} />
+    </Stack.Navigator>
+  );
+};
+
 /**
- * Main Navigator with Beautiful Tab Bar
+ * Main Navigator with Settings Tab
  */
 const MainNavigator = () => {
   return (
@@ -68,27 +85,18 @@ const MainNavigator = () => {
           bottom: 0,
           left: 0,
           right: 0,
-          backgroundColor: Platform.OS === 'ios' ? 'rgba(255, 255, 255, 0.9)' : COLORS.background,
+          backgroundColor: COLORS.background,
           borderTopColor: COLORS.border,
-          borderTopWidth: 0.5,
-          paddingBottom: Platform.OS === 'ios' ? 32 : 20,
-          paddingTop: 16,
-          height: Platform.OS === 'ios' ? 95 : 82,
-          elevation: 24,
+          borderTopWidth: 1,
+          paddingBottom: Platform.OS === 'ios' ? 28 : 16,
+          paddingTop: 12,
+          height: Platform.OS === 'ios' ? 88 : 75,
+          elevation: 20,
           shadowColor: '#000',
           shadowOffset: { width: 0, height: -4 },
-          shadowOpacity: 0.12,
-          shadowRadius: 16,
+          shadowOpacity: 0.15,
+          shadowRadius: 12,
         },
-        tabBarBackground: () => (
-          Platform.OS === 'ios' ? (
-            <BlurView
-              intensity={95}
-              tint="light"
-              style={StyleSheet.absoluteFill}
-            />
-          ) : null
-        ),
       }}
     >
       <Tab.Screen
@@ -110,6 +118,16 @@ const MainNavigator = () => {
           ),
         }}
       />
+
+      <Tab.Screen
+        name="Settings"
+        component={SettingsStack}
+        options={{
+          tabBarIcon: ({ focused }) => (
+            <TabBarIcon focused={focused} icon="⚙️" label="Settings" />
+          ),
+        }}
+      />
     </Tab.Navigator>
   );
 };
@@ -118,46 +136,44 @@ const styles = StyleSheet.create({
   tabIconContainer: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingTop: 6,
+    paddingTop: 4,
   },
 
   iconWrapper: {
-    width: 52,
-    height: 40,
+    width: 48,
+    height: 36,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 14,
-    marginBottom: 6,
-    backgroundColor: 'transparent',
+    borderRadius: 12,
+    marginBottom: 4,
   },
 
   iconWrapperFocused: {
-    backgroundColor: COLORS.primary + '15', // 15% opacity
+    backgroundColor: COLORS.primaryLight + '20',
   },
 
   tabIcon: {
-    fontSize: 26,
-    opacity: 0.5,
+    fontSize: 24,
+    opacity: 0.6,
   },
 
   tabIconFocused: {
-    fontSize: 28,
+    fontSize: 26,
     opacity: 1,
+    transform: [{ scale: 1.05 }],
   },
 
   tabLabel: {
-    fontSize: 10.5,
+    fontSize: 11,
     fontWeight: FONTS.weights.medium,
     color: COLORS.textSecondary,
     marginTop: 2,
-    letterSpacing: 0.2,
   },
 
   tabLabelFocused: {
-    fontSize: 10.5,
+    fontSize: 11,
     fontWeight: FONTS.weights.semiBold,
     color: COLORS.primary,
-    letterSpacing: 0.2,
   },
 });
 

@@ -5,6 +5,7 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
+  Switch,
   Platform,
 } from 'react-native';
 import Input from '../common/Input';
@@ -41,6 +42,7 @@ const GiftCardForm = ({
     expirationDate: initialData.expirationDate || '',
     notes: initialData.notes || '',
     isOnline: initialData.isOnline || false,
+    locationNotificationsEnabled: initialData.locationNotificationsEnabled ?? true,
   });
 
   // Error state
@@ -74,21 +76,25 @@ const GiftCardForm = ({
       isValid = false;
     }
 
-    // Card number
-    const cardNumberResult = validateCardNumber(formData.cardNumber);
-    if (!cardNumberResult.isValid) {
-      newErrors.cardNumber = cardNumberResult.error;
-      isValid = false;
+    // Card number (optional but validated if provided)
+    if (formData.cardNumber) {
+      const cardNumberResult = validateCardNumber(formData.cardNumber);
+      if (!cardNumberResult.isValid) {
+        newErrors.cardNumber = cardNumberResult.error;
+        isValid = false;
+      }
     }
 
-    // Balance
-    const balanceResult = validateBalance(formData.balance);
-    if (!balanceResult.isValid) {
-      newErrors.balance = balanceResult.error;
-      isValid = false;
+    // Balance (optional but validated if provided)
+    if (formData.balance) {
+      const balanceResult = validateBalance(formData.balance);
+      if (!balanceResult.isValid) {
+        newErrors.balance = balanceResult.error;
+        isValid = false;
+      }
     }
 
-    // Expiration date (optional)
+    // Expiration date (optional but validated if provided)
     if (formData.expirationDate) {
       const expirationResult = validateExpirationDate(formData.expirationDate);
       if (!expirationResult.isValid) {
@@ -97,7 +103,7 @@ const GiftCardForm = ({
       }
     }
 
-    // Notes (optional)
+    // Notes (optional but validated if provided)
     if (formData.notes) {
       const notesResult = validateNotes(formData.notes);
       if (!notesResult.isValid) {
@@ -117,14 +123,17 @@ const GiftCardForm = ({
     }
 
     // Parse balance to float
-    const balanceResult = validateBalance(formData.balance);
+    const balanceValue = formData.balance ? parseFloat(formData.balance) : null;
+    
     const parsedData = {
-      ...formData,
-      balance: balanceResult.value,
-      // Convert date string to ISO format if provided
-      expirationDate: formData.expirationDate
-        ? new Date(formData.expirationDate).toISOString()
-        : null,
+      store_name: formData.storeName.trim(),
+      card_number: formData.cardNumber.trim() || null,
+      balance: balanceValue,
+      currency: formData.currency || 'USD',
+      expiration_date: formData.expirationDate || null,
+      notes: formData.notes.trim() || null,
+      is_online: formData.isOnline,
+      location_notifications_enabled: formData.isOnline ? false : formData.locationNotificationsEnabled,
     };
 
     onSubmit(parsedData);
@@ -139,13 +148,12 @@ const GiftCardForm = ({
     >
       {/* Store Name */}
       <Input
-        label="Store Name"
+        label="Store Name *"
         value={formData.storeName}
         onChangeText={(value) => handleInputChange('storeName', value)}
         placeholder="e.g. Starbucks, Amazon, Target"
         error={errors.storeName}
         autoCapitalize="words"
-        required
       />
 
       {/* Card Number */}
@@ -156,7 +164,6 @@ const GiftCardForm = ({
         placeholder="Enter card number or code"
         error={errors.cardNumber}
         autoCapitalize="none"
-        required
       />
 
       {/* Balance */}
@@ -167,11 +174,10 @@ const GiftCardForm = ({
         placeholder="0.00"
         keyboardType="decimal-pad"
         error={errors.balance}
-        prefix="$"
-        required
+        leftIcon={<Text style={styles.currencySymbol}>$</Text>}
       />
 
-      {/* Currency (optional - default USD) */}
+      {/* Currency Info */}
       <View style={styles.infoBox}>
         <Text style={styles.infoText}>💵 Currency: USD</Text>
         <Text style={styles.infoSubtext}>
@@ -194,7 +200,7 @@ const GiftCardForm = ({
         </Text>
       </View>
 
-      {/* Online/In-Store Toggle */}
+      {/* Card Type Toggle */}
       <View style={styles.toggleContainer}>
         <Text style={styles.toggleLabel}>Card Type</Text>
         <View style={styles.toggleButtons}>
@@ -204,6 +210,7 @@ const GiftCardForm = ({
               !formData.isOnline && styles.toggleButtonActive,
             ]}
             onPress={() => handleInputChange('isOnline', false)}
+            activeOpacity={0.7}
           >
             <Text
               style={[
@@ -221,6 +228,7 @@ const GiftCardForm = ({
               formData.isOnline && styles.toggleButtonActive,
             ]}
             onPress={() => handleInputChange('isOnline', true)}
+            activeOpacity={0.7}
           >
             <Text
               style={[
@@ -234,6 +242,33 @@ const GiftCardForm = ({
         </View>
       </View>
 
+      {/* Location Notifications Toggle (only for in-store cards) */}
+      {!formData.isOnline && (
+        <View style={styles.notificationSection}>
+          <View style={styles.notificationHeader}>
+            <View style={styles.notificationInfo}>
+              <Text style={styles.notificationLabel}>📍 Location Notifications</Text>
+              <Text style={styles.notificationDescription}>
+                Get notified when you're near this store
+              </Text>
+            </View>
+            <Switch
+              value={formData.locationNotificationsEnabled}
+              onValueChange={(value) => handleInputChange('locationNotificationsEnabled', value)}
+              trackColor={{ false: COLORS.border, true: COLORS.primary }}
+              thumbColor={COLORS.background}
+              ios_backgroundColor={COLORS.border}
+            />
+          </View>
+
+          <View style={styles.notificationHint}>
+            <Text style={styles.notificationHintText}>
+              ℹ️ Requires location permissions. You can enable/disable this for each card individually.
+            </Text>
+          </View>
+        </View>
+      )}
+
       {/* Notes */}
       <Input
         label="Notes (Optional)"
@@ -241,9 +276,20 @@ const GiftCardForm = ({
         onChangeText={(value) => handleInputChange('notes', value)}
         placeholder="Add any notes about this card..."
         multiline
-        numberOfLines={3}
+        numberOfLines={4}
         error={errors.notes}
       />
+
+      {/* Info Card */}
+      <View style={styles.infoCard}>
+        <Text style={styles.infoCardIcon}>💡</Text>
+        <View style={styles.infoCardContent}>
+          <Text style={styles.infoCardTitle}>Quick Tip</Text>
+          <Text style={styles.infoCardText}>
+            Only the store name is required. You can add more details anytime by editing the card later.
+          </Text>
+        </View>
+      </View>
 
       {/* Submit Button */}
       <Button
@@ -264,6 +310,13 @@ const styles = StyleSheet.create({
   content: {
     padding: SPACING.md,
     paddingBottom: Platform.OS === 'ios' ? 120 : 105, // Space for tab bar
+  },
+
+  currencySymbol: {
+    fontSize: FONTS.sizes.base,
+    color: COLORS.textSecondary,
+    fontWeight: FONTS.weights.medium,
+    marginRight: SPACING.xs,
   },
 
   infoBox: {
@@ -295,7 +348,7 @@ const styles = StyleSheet.create({
   helpTextContent: {
     fontSize: FONTS.sizes.sm,
     color: COLORS.textSecondary,
-    fontStyle: 'italic',
+    lineHeight: FONTS.sizes.sm * 1.4,
   },
 
   toggleContainer: {
@@ -339,6 +392,84 @@ const styles = StyleSheet.create({
   toggleButtonTextActive: {
     color: COLORS.background,
     fontWeight: FONTS.weights.semiBold,
+  },
+
+  notificationSection: {
+    backgroundColor: COLORS.surface,
+    padding: SPACING.md,
+    borderRadius: RADIUS.md,
+    marginBottom: SPACING.md,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+
+  notificationHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: SPACING.sm,
+  },
+
+  notificationInfo: {
+    flex: 1,
+    marginRight: SPACING.md,
+  },
+
+  notificationLabel: {
+    fontSize: FONTS.sizes.base,
+    fontWeight: FONTS.weights.semiBold,
+    color: COLORS.text,
+    marginBottom: SPACING.xs / 2,
+  },
+
+  notificationDescription: {
+    fontSize: FONTS.sizes.sm,
+    color: COLORS.textSecondary,
+    lineHeight: FONTS.sizes.sm * 1.4,
+  },
+
+  notificationHint: {
+    backgroundColor: COLORS.background,
+    padding: SPACING.sm,
+    borderRadius: RADIUS.sm,
+  },
+
+  notificationHintText: {
+    fontSize: FONTS.sizes.xs,
+    color: COLORS.textSecondary,
+    lineHeight: FONTS.sizes.xs * 1.5,
+  },
+
+  infoCard: {
+    flexDirection: 'row',
+    backgroundColor: COLORS.surface,
+    padding: SPACING.md,
+    borderRadius: RADIUS.md,
+    marginBottom: SPACING.lg,
+    borderLeftWidth: 3,
+    borderLeftColor: COLORS.info,
+  },
+
+  infoCardIcon: {
+    fontSize: 24,
+    marginRight: SPACING.sm,
+  },
+
+  infoCardContent: {
+    flex: 1,
+  },
+
+  infoCardTitle: {
+    fontSize: FONTS.sizes.sm,
+    fontWeight: FONTS.weights.semiBold,
+    color: COLORS.text,
+    marginBottom: SPACING.xs / 2,
+  },
+
+  infoCardText: {
+    fontSize: FONTS.sizes.sm,
+    color: COLORS.textSecondary,
+    lineHeight: FONTS.sizes.sm * 1.5,
   },
 
   submitButton: {

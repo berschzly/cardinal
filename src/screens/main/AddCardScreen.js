@@ -9,14 +9,19 @@ import {
   TouchableOpacity,
   Switch,
   Alert,
+  Image,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import * as ImagePicker from 'expo-image-picker';
 import { useGiftCards } from '../../hooks/useGiftCards';
+import { uploadImage } from '../../services/storage';
 import Button from '../../components/common/Button';
 import Input from '../../components/common/Input';
 import ErrorMessage from '../../components/common/ErrorMessage';
 import { COLORS, FONTS, SPACING, RADIUS } from '../../utils/constants';
 import { ERROR_MESSAGES, SUCCESS_MESSAGES } from '../../utils/constants';
+import { supabase } from '../../services/supabase';
 
 const AddCardScreen = ({ navigation }) => {
   const insets = useSafeAreaInsets();
@@ -31,14 +36,126 @@ const AddCardScreen = ({ navigation }) => {
   const [notes, setNotes] = useState('');
   const [isOnline, setIsOnline] = useState(false);
   const [storeAddress, setStoreAddress] = useState('');
+  const [imageUri, setImageUri] = useState(null);
 
   // UI state
   const [loading, setLoading] = useState(false);
+  const [uploadingImage, setUploadingImage] = useState(false);
   const [error, setError] = useState('');
 
   // Calculate bottom padding for tab bar
   const tabBarHeight = Platform.OS === 'ios' ? 95 : 82;
   const bottomPadding = tabBarHeight + SPACING.md;
+
+  // Request permissions
+  const requestCameraPermission = async () => {
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert(
+        'Permission Required',
+        'Camera permission is needed to take photos of your gift cards.'
+      );
+      return false;
+    }
+    return true;
+  };
+
+  const requestMediaLibraryPermission = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert(
+        'Permission Required',
+        'Photo library permission is needed to select images.'
+      );
+      return false;
+    }
+    return true;
+  };
+
+  // Take photo with camera
+  const takePhoto = async () => {
+    const hasPermission = await requestCameraPermission();
+    if (!hasPermission) return;
+
+    try {
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ['images'], // FIXED: Use array instead of MediaTypeOptions
+        allowsEditing: true,
+        aspect: [16, 10],
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets[0]) {
+        setImageUri(result.assets[0].uri);
+      }
+    } catch (error) {
+      console.error('Camera error:', error);
+      Alert.alert('Error', 'Failed to open camera. Please try again.');
+    }
+  };
+
+  // Pick image from gallery
+  const pickImage = async () => {
+    const hasPermission = await requestMediaLibraryPermission();
+    if (!hasPermission) return;
+
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'], // FIXED: Use array instead of MediaTypeOptions
+        allowsEditing: true,
+        aspect: [16, 10],
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets[0]) {
+        setImageUri(result.assets[0].uri);
+      }
+    } catch (error) {
+      console.error('Image picker error:', error);
+      Alert.alert('Error', 'Failed to pick image. Please try again.');
+    }
+  };
+
+  // Show image picker options
+  const showImagePicker = () => {
+    Alert.alert(
+      'Add Photo',
+      'Choose how you want to add a photo of your gift card',
+      [
+        {
+          text: 'Take Photo',
+          onPress: takePhoto,
+        },
+        {
+          text: 'Choose from Library',
+          onPress: pickImage,
+        },
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+      ]
+    );
+  };
+
+  // Remove selected image
+  const removeImage = () => {
+    Alert.alert(
+      'Remove Photo',
+      'Are you sure you want to remove this photo?',
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: () => setImageUri(null),
+        },
+      ]
+    );
+  };
 
   const validateForm = () => {
     // Store name is required
@@ -96,44 +213,66 @@ const AddCardScreen = ({ navigation }) => {
       return;
     }
 
-    // Prepare card data
-    const cardData = {
-      store_name: storeName.trim(),
-      card_number: cardNumber.trim() || null,
-      balance: balance ? parseFloat(balance) : null,
-      currency: currency || 'USD',
-      expiration_date: expirationDate || null,
-      notes: notes.trim() || null,
-      is_online: isOnline,
-      store_address: !isOnline && storeAddress.trim() ? storeAddress.trim() : null,
-      location_notifications_enabled: !isOnline, // Enable notifications for physical stores
-    };
-
-    // Add card
     setLoading(true);
-    const { error: addError } = await addCard(cardData);
-    setLoading(false);
 
-    if (addError) {
-      setError(addError);
-      return;
+    try {
+      // Upload image if selected
+      let imageUrl = null;
+      if (imageUri) {
+        setUploadingImage(true);
+        const { data: { user } } = await supabase.auth.getUser();
+        
+        const { url, error: uploadError } = await uploadImage(imageUri, user.id);
+        setUploadingImage(false);
+
+        if (uploadError) {
+          throw new Error(`Failed to upload image: ${uploadError}`);
+        }
+
+        imageUrl = url;
+      }
+
+      // Prepare card data
+      const cardData = {
+        store_name: storeName.trim(),
+        card_number: cardNumber.trim() || null,
+        balance: balance ? parseFloat(balance) : null,
+        currency: currency || 'USD',
+        expiration_date: expirationDate || null,
+        notes: notes.trim() || null,
+        is_online: isOnline,
+        store_address: !isOnline && storeAddress.trim() ? storeAddress.trim() : null,
+        location_notifications_enabled: !isOnline,
+        image_url: imageUrl,
+      };
+
+      // Add card
+      const { error: addError } = await addCard(cardData);
+
+      if (addError) {
+        throw new Error(addError);
+      }
+
+      // Success
+      setLoading(false);
+      Alert.alert(
+        'Success!',
+        SUCCESS_MESSAGES.cardAdded,
+        [
+          {
+            text: 'OK',
+            onPress: () => navigation.goBack(),
+          },
+        ]
+      );
+    } catch (err) {
+      setLoading(false);
+      setError(err.message);
     }
-
-    // Success - show alert and navigate back
-    Alert.alert(
-      'Success!',
-      SUCCESS_MESSAGES.cardAdded,
-      [
-        {
-          text: 'OK',
-          onPress: () => navigation.goBack(),
-        },
-      ]
-    );
   };
 
   const handleCancel = () => {
-    if (storeName || cardNumber || balance || notes) {
+    if (storeName || cardNumber || balance || notes || imageUri) {
       Alert.alert(
         'Discard Changes?',
         'Are you sure you want to discard this gift card?',
@@ -192,6 +331,44 @@ const AddCardScreen = ({ navigation }) => {
               </Text>
             </View>
           )}
+
+          {/* Image Upload Section */}
+          <View style={styles.imageSection}>
+            <Text style={styles.sectionLabel}>Card Photo (Optional)</Text>
+            
+            {imageUri ? (
+              <View style={styles.imagePreviewContainer}>
+                <Image source={{ uri: imageUri }} style={styles.imagePreview} />
+                <TouchableOpacity
+                  style={styles.removeImageButton}
+                  onPress={removeImage}
+                >
+                  <Text style={styles.removeImageText}>✕</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <TouchableOpacity
+                style={styles.imagePlaceholder}
+                onPress={showImagePicker}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.imagePlaceholderIcon}>📷</Text>
+                <Text style={styles.imagePlaceholderText}>
+                  Take or upload a photo
+                </Text>
+                <Text style={styles.imagePlaceholderSubtext}>
+                  Helps you quickly identify your card
+                </Text>
+              </TouchableOpacity>
+            )}
+
+            {uploadingImage && (
+              <View style={styles.uploadingContainer}>
+                <ActivityIndicator size="small" color={COLORS.primary} />
+                <Text style={styles.uploadingText}>Uploading image...</Text>
+              </View>
+            )}
+          </View>
 
           {/* Form */}
           <View style={styles.form}>
@@ -365,7 +542,7 @@ const styles = StyleSheet.create({
   },
 
   headerSpacer: {
-    width: 60, // Same width as cancel button for centering
+    width: 60,
   },
 
   scrollView: {
@@ -389,6 +566,98 @@ const styles = StyleSheet.create({
     fontSize: FONTS.sizes.sm,
     color: COLORS.expiringSoonText,
     fontWeight: FONTS.weights.medium,
+  },
+
+  imageSection: {
+    marginBottom: SPACING.lg,
+  },
+
+  imagePreviewContainer: {
+    position: 'relative',
+    borderRadius: RADIUS.lg,
+    overflow: 'hidden',
+    marginTop: SPACING.sm,
+  },
+
+  imagePreview: {
+    width: '100%',
+    height: 200,
+    borderRadius: RADIUS.lg,
+    backgroundColor: COLORS.surface,
+  },
+
+  removeImageButton: {
+    position: 'absolute',
+    top: SPACING.sm,
+    right: SPACING.sm,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: COLORS.error,
+    justifyContent: 'center',
+    alignItems: 'center',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.25,
+        shadowRadius: 4,
+      },
+      android: {
+        elevation: 4,
+      },
+    }),
+  },
+
+  removeImageText: {
+    color: COLORS.background,
+    fontSize: FONTS.sizes.lg,
+    fontWeight: FONTS.weights.bold,
+  },
+
+  imagePlaceholder: {
+    height: 160,
+    borderRadius: RADIUS.lg,
+    borderWidth: 2,
+    borderColor: COLORS.border,
+    borderStyle: 'dashed',
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: COLORS.surface,
+    marginTop: SPACING.sm,
+  },
+
+  imagePlaceholderIcon: {
+    fontSize: 48,
+    marginBottom: SPACING.sm,
+  },
+
+  imagePlaceholderText: {
+    fontSize: FONTS.sizes.base,
+    fontWeight: FONTS.weights.medium,
+    color: COLORS.text,
+    marginBottom: SPACING.xs / 2,
+  },
+
+  imagePlaceholderSubtext: {
+    fontSize: FONTS.sizes.sm,
+    color: COLORS.textSecondary,
+  },
+
+  uploadingContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: SPACING.sm,
+    padding: SPACING.sm,
+    backgroundColor: COLORS.surface,
+    borderRadius: RADIUS.sm,
+  },
+
+  uploadingText: {
+    marginLeft: SPACING.sm,
+    fontSize: FONTS.sizes.sm,
+    color: COLORS.textSecondary,
   },
 
   form: {

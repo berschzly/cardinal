@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -24,29 +24,49 @@ import { COLORS, FONTS, SPACING, RADIUS } from '../../utils/constants';
  * Reusable form for adding/editing gift cards
  * @param {Object} initialData - Initial form values (for editing)
  * @param {Function} onSubmit - Function to call on form submission
+ * @param {Function} onCancel - Function to call when canceling
  * @param {boolean} loading - Loading state
- * @param {string} submitButtonText - Text for submit button (default: "Save Card")
+ * @param {string} submitButtonText - Text for submit button
  */
 const GiftCardForm = ({
   initialData = {},
   onSubmit,
+  onCancel,
   loading = false,
   submitButtonText = 'Save Card',
 }) => {
   // Form state
   const [formData, setFormData] = useState({
-    storeName: initialData.storeName || '',
-    cardNumber: initialData.cardNumber || '',
-    balance: initialData.balance?.toString() || '',
-    currency: initialData.currency || 'USD',
-    expirationDate: initialData.expirationDate || '',
-    notes: initialData.notes || '',
-    isOnline: initialData.isOnline || false,
-    locationNotificationsEnabled: initialData.locationNotificationsEnabled ?? true,
+    storeName: '',
+    cardNumber: '',
+    balance: '',
+    currency: 'USD',
+    expirationDate: '',
+    notes: '',
+    isOnline: false,
+    storeAddress: '',
+    locationNotificationsEnabled: true,
   });
 
   // Error state
   const [errors, setErrors] = useState({});
+
+  // Update form data when initialData changes
+  useEffect(() => {
+    if (initialData) {
+      setFormData({
+        storeName: initialData.storeName || '',
+        cardNumber: initialData.cardNumber || '',
+        balance: initialData.balance?.toString() || '',
+        currency: initialData.currency || 'USD',
+        expirationDate: initialData.expirationDate || '',
+        notes: initialData.notes || '',
+        isOnline: initialData.isOnline || false,
+        storeAddress: initialData.storeAddress || '',
+        locationNotificationsEnabled: initialData.locationNotificationsEnabled ?? true,
+      });
+    }
+  }, [initialData]);
 
   // Handle input change
   const handleInputChange = (field, value) => {
@@ -55,12 +75,13 @@ const GiftCardForm = ({
       [field]: value,
     }));
 
-    // Clear error for this field when user starts typing
+    // Clear error for this field
     if (errors[field]) {
-      setErrors((prev) => ({
-        ...prev,
-        [field]: null,
-      }));
+      setErrors((prev) => {
+        const newErrors = { ...prev };
+        delete newErrors[field];
+        return newErrors;
+      });
     }
   };
 
@@ -69,14 +90,14 @@ const GiftCardForm = ({
     const newErrors = {};
     let isValid = true;
 
-    // Store name
+    // Store name (required)
     const storeNameResult = validateStoreName(formData.storeName);
     if (!storeNameResult.isValid) {
       newErrors.storeName = storeNameResult.error;
       isValid = false;
     }
 
-    // Card number (optional but validated if provided)
+    // Card number (optional)
     if (formData.cardNumber) {
       const cardNumberResult = validateCardNumber(formData.cardNumber);
       if (!cardNumberResult.isValid) {
@@ -85,7 +106,7 @@ const GiftCardForm = ({
       }
     }
 
-    // Balance (optional but validated if provided)
+    // Balance (optional)
     if (formData.balance) {
       const balanceResult = validateBalance(formData.balance);
       if (!balanceResult.isValid) {
@@ -94,7 +115,7 @@ const GiftCardForm = ({
       }
     }
 
-    // Expiration date (optional but validated if provided)
+    // Expiration date (optional)
     if (formData.expirationDate) {
       const expirationResult = validateExpirationDate(formData.expirationDate);
       if (!expirationResult.isValid) {
@@ -103,7 +124,7 @@ const GiftCardForm = ({
       }
     }
 
-    // Notes (optional but validated if provided)
+    // Notes (optional)
     if (formData.notes) {
       const notesResult = validateNotes(formData.notes);
       if (!notesResult.isValid) {
@@ -133,6 +154,7 @@ const GiftCardForm = ({
       expiration_date: formData.expirationDate || null,
       notes: formData.notes.trim() || null,
       is_online: formData.isOnline,
+      store_address: !formData.isOnline && formData.storeAddress ? formData.storeAddress.trim() : null,
       location_notifications_enabled: formData.isOnline ? false : formData.locationNotificationsEnabled,
     };
 
@@ -140,20 +162,16 @@ const GiftCardForm = ({
   };
 
   return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={styles.content}
-      keyboardShouldPersistTaps="handled"
-      showsVerticalScrollIndicator={false}
-    >
+    <View style={styles.container}>
       {/* Store Name */}
       <Input
         label="Store Name *"
         value={formData.storeName}
         onChangeText={(value) => handleInputChange('storeName', value)}
-        placeholder="e.g. Starbucks, Amazon, Target"
+        placeholder="e.g., Starbucks, Amazon, Target"
         error={errors.storeName}
         autoCapitalize="words"
+        autoCorrect={false}
       />
 
       {/* Card Number */}
@@ -164,6 +182,7 @@ const GiftCardForm = ({
         placeholder="Enter card number or code"
         error={errors.cardNumber}
         autoCapitalize="none"
+        autoCorrect={false}
       />
 
       {/* Balance */}
@@ -190,8 +209,10 @@ const GiftCardForm = ({
         label="Expiration Date (Optional)"
         value={formData.expirationDate}
         onChangeText={(value) => handleInputChange('expirationDate', value)}
-        placeholder="YYYY-MM-DD"
+        placeholder="YYYY-MM-DD (e.g., 2025-12-31)"
         error={errors.expirationDate}
+        autoCapitalize="none"
+        autoCorrect={false}
       />
 
       <View style={styles.helpText}>
@@ -242,7 +263,19 @@ const GiftCardForm = ({
         </View>
       </View>
 
-      {/* Location Notifications Toggle (only for in-store cards) */}
+      {/* Store Address (only for physical cards) */}
+      {!formData.isOnline && (
+        <Input
+          label="Store Location (Optional)"
+          value={formData.storeAddress}
+          onChangeText={(value) => handleInputChange('storeAddress', value)}
+          placeholder="e.g., 123 Main St, New York, NY"
+          autoCapitalize="words"
+          autoCorrect={false}
+        />
+      )}
+
+      {/* Location Notifications Toggle (only for physical cards) */}
       {!formData.isOnline && (
         <View style={styles.notificationSection}>
           <View style={styles.notificationHeader}>
@@ -263,7 +296,7 @@ const GiftCardForm = ({
 
           <View style={styles.notificationHint}>
             <Text style={styles.notificationHintText}>
-              ℹ️ Requires location permissions. You can enable/disable this for each card individually.
+              ℹ️ Requires location permissions. Can be changed later in settings.
             </Text>
           </View>
         </View>
@@ -278,6 +311,7 @@ const GiftCardForm = ({
         multiline
         numberOfLines={4}
         error={errors.notes}
+        autoCapitalize="sentences"
       />
 
       {/* Info Card */}
@@ -291,14 +325,25 @@ const GiftCardForm = ({
         </View>
       </View>
 
-      {/* Submit Button */}
-      <Button
-        title={submitButtonText}
-        onPress={handleSubmit}
-        loading={loading}
-        style={styles.submitButton}
-      />
-    </ScrollView>
+      {/* Action Buttons */}
+      <View style={styles.actions}>
+        <Button
+          title={submitButtonText}
+          onPress={handleSubmit}
+          loading={loading}
+          style={styles.submitButton}
+        />
+
+        {onCancel && (
+          <Button
+            title="Cancel"
+            onPress={onCancel}
+            variant="outline"
+            style={styles.cancelButton}
+          />
+        )}
+      </View>
+    </View>
   );
 };
 
@@ -307,16 +352,11 @@ const styles = StyleSheet.create({
     flex: 1,
   },
 
-  content: {
-    padding: SPACING.md,
-    paddingBottom: Platform.OS === 'ios' ? 120 : 105, // Space for tab bar
-  },
-
   currencySymbol: {
     fontSize: FONTS.sizes.base,
     color: COLORS.textSecondary,
     fontWeight: FONTS.weights.medium,
-    marginRight: SPACING.xs,
+    marginRight: SPACING.xs / 2,
   },
 
   infoBox: {
@@ -324,35 +364,36 @@ const styles = StyleSheet.create({
     padding: SPACING.md,
     borderRadius: RADIUS.md,
     marginBottom: SPACING.md,
+    marginTop: -SPACING.xs,
     borderLeftWidth: 3,
     borderLeftColor: COLORS.primary,
   },
 
   infoText: {
-    fontSize: FONTS.sizes.base,
+    fontSize: FONTS.sizes.sm,
     fontWeight: FONTS.weights.semiBold,
     color: COLORS.text,
     marginBottom: SPACING.xs / 2,
   },
 
   infoSubtext: {
-    fontSize: FONTS.sizes.sm,
+    fontSize: FONTS.sizes.xs,
     color: COLORS.textSecondary,
   },
 
   helpText: {
     marginBottom: SPACING.md,
-    marginTop: -SPACING.sm,
+    marginTop: -SPACING.xs,
   },
 
   helpTextContent: {
     fontSize: FONTS.sizes.sm,
     color: COLORS.textSecondary,
-    lineHeight: FONTS.sizes.sm * 1.4,
+    lineHeight: FONTS.sizes.sm * 1.5,
   },
 
   toggleContainer: {
-    marginBottom: SPACING.md,
+    marginBottom: SPACING.lg,
   },
 
   toggleLabel: {
@@ -376,11 +417,33 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: COLORS.border,
     alignItems: 'center',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.05,
+        shadowRadius: 2,
+      },
+      android: {
+        elevation: 1,
+      },
+    }),
   },
 
   toggleButtonActive: {
     backgroundColor: COLORS.primary,
     borderColor: COLORS.primary,
+    ...Platform.select({
+      ios: {
+        shadowColor: COLORS.primary,
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.25,
+        shadowRadius: 4,
+      },
+      android: {
+        elevation: 4,
+      },
+    }),
   },
 
   toggleButtonText: {
@@ -391,7 +454,7 @@ const styles = StyleSheet.create({
 
   toggleButtonTextActive: {
     color: COLORS.background,
-    fontWeight: FONTS.weights.semiBold,
+    fontWeight: FONTS.weights.bold,
   },
 
   notificationSection: {
@@ -472,8 +535,16 @@ const styles = StyleSheet.create({
     lineHeight: FONTS.sizes.sm * 1.5,
   },
 
+  actions: {
+    marginTop: SPACING.md,
+  },
+
   submitButton: {
-    marginTop: SPACING.lg,
+    marginBottom: SPACING.sm,
+  },
+
+  cancelButton: {
+    marginBottom: SPACING.lg,
   },
 });
 

@@ -33,8 +33,10 @@ export default {
         {
           // Replace these with your actual AdMob App IDs from Google AdMob Console
           // Get these from: https://apps.admob.com/
-          androidAppId: process.env.ADMOB_ANDROID_APP_ID || "ca-app-pub-3940256099942544~3347511713", // Test ID
-          iosAppId: process.env.ADMOB_IOS_APP_ID || "ca-app-pub-3940256099942544~1458002511", // Test ID
+          androidAppId: "ca-app-pub-3940256099942544~3347511713", // Test ID
+          iosAppId: "ca-app-pub-3940256099942544~1458002511", // Test ID
+          // Ensure the plugin is properly configured
+          skipAutoInit: false
         }
       ]
     ],

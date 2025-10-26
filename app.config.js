@@ -2,6 +2,7 @@ export default {
   expo: {
     name: "Cardinal",
     slug: "cardinal",
+    scheme: "cardinal",
     version: "1.0.0",
     orientation: "portrait",
     icon: "./src/assets/icons/icon.png",
@@ -41,6 +42,9 @@ export default {
       ]
     ],
     extra: {
+      eas: {
+        projectId: "eca8b061-41c3-45e5-beb8-4409d7853a8d"
+      },
       supabaseUrl: process.env.SUPABASE_URL,
       supabaseAnonKey: process.env.SUPABASE_ANON_KEY,
       googleVisionApiKey: process.env.GOOGLE_VISION_API_KEY,

@@ -7,59 +7,63 @@ import {
   KeyboardAvoidingView,
   Platform,
   TouchableOpacity,
-  Switch,
   Alert,
   Image,
   ActivityIndicator,
 } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import { useGiftCards } from '../../hooks/useGiftCards';
 import { uploadImage } from '../../services/storage';
+import { scanGiftCard } from '../../services/ocr';
 import Button from '../../components/common/Button';
-import Input from '../../components/common/Input';
+import GiftCardForm from '../../components/cards/GiftCardForm';
 import ErrorMessage from '../../components/common/ErrorMessage';
 import { COLORS, FONTS, SPACING, RADIUS } from '../../utils/constants';
 import { ERROR_MESSAGES, SUCCESS_MESSAGES } from '../../utils/constants';
 import { supabase } from '../../services/supabase';
 
 const AddCardScreen = ({ navigation }) => {
-  const insets = useSafeAreaInsets();
   const { addCard, canAddMore } = useGiftCards(false);
 
-  // Form state
-  const [storeName, setStoreName] = useState('');
-  const [cardNumber, setCardNumber] = useState('');
-  const [balance, setBalance] = useState('');
-  const [currency, setCurrency] = useState('USD');
-  const [expirationDate, setExpirationDate] = useState('');
-  const [notes, setNotes] = useState('');
-  const [isOnline, setIsOnline] = useState(false);
-  const [storeAddress, setStoreAddress] = useState('');
-  const [imageUri, setImageUri] = useState(null);
+  // Form data state
+  const [formData, setFormData] = useState({
+    storeName: '',
+    cardNumber: '',
+    balance: '',
+    currency: 'USD',
+    expirationDate: '',
+    notes: '',
+    isOnline: false,
+    storeAddress: '',
+    imageUrl: null,
+  });
 
   // UI state
   const [loading, setLoading] = useState(false);
+  const [scanning, setScanning] = useState(false);
   const [uploadingImage, setUploadingImage] = useState(false);
+  const [imageUri, setImageUri] = useState(null);
   const [error, setError] = useState('');
 
   // Calculate bottom padding for tab bar
   const tabBarHeight = Platform.OS === 'ios' ? 95 : 82;
   const bottomPadding = tabBarHeight + SPACING.md;
 
-  // Request permissions
+  // Request camera permissions
   const requestCameraPermission = async () => {
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
     if (status !== 'granted') {
       Alert.alert(
         'Permission Required',
-        'Camera permission is needed to take photos of your gift cards.'
+        'Camera permission is needed to scan your gift cards.'
       );
       return false;
     }
     return true;
   };
 
+  // Request media library permissions
   const requestMediaLibraryPermission = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
@@ -72,14 +76,67 @@ const AddCardScreen = ({ navigation }) => {
     return true;
   };
 
-  // Take photo with camera
-  const takePhoto = async () => {
+  // Scan gift card with OCR
+  const handleScanCard = async () => {
     const hasPermission = await requestCameraPermission();
     if (!hasPermission) return;
 
     try {
       const result = await ImagePicker.launchCameraAsync({
-        mediaTypes: ['images'], // FIXED: Use array instead of MediaTypeOptions
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        aspect: [16, 10],
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets[0]) {
+        const uri = result.assets[0].uri;
+        setImageUri(uri);
+
+        // Show scanning feedback
+        setScanning(true);
+        setError('');
+
+        // Scan the card
+        const { data: scannedData, error: scanError } = await scanGiftCard(uri);
+        setScanning(false);
+
+        if (scanError) {
+          setError(scanError);
+          return;
+        }
+
+        // Auto-fill form with scanned data
+        if (scannedData) {
+          setFormData((prev) => ({
+            ...prev,
+            storeName: scannedData.storeName || prev.storeName,
+            cardNumber: scannedData.cardNumber || prev.cardNumber,
+            balance: scannedData.balance || prev.balance,
+          }));
+
+          Alert.alert(
+            '✅ Card Scanned!',
+            'Information has been extracted. Please review and edit as needed.',
+            [{ text: 'OK' }]
+          );
+        }
+      }
+    } catch (error) {
+      console.error('Scan error:', error);
+      setScanning(false);
+      Alert.alert('Error', 'Failed to scan card. Please try again.');
+    }
+  };
+
+  // Take photo without scanning
+  const handleTakePhoto = async () => {
+    const hasPermission = await requestCameraPermission();
+    if (!hasPermission) return;
+
+    try {
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ['images'],
         allowsEditing: true,
         aspect: [16, 10],
         quality: 0.8,
@@ -95,13 +152,13 @@ const AddCardScreen = ({ navigation }) => {
   };
 
   // Pick image from gallery
-  const pickImage = async () => {
+  const handlePickImage = async () => {
     const hasPermission = await requestMediaLibraryPermission();
     if (!hasPermission) return;
 
     try {
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ['images'], // FIXED: Use array instead of MediaTypeOptions
+        mediaTypes: ['images'],
         allowsEditing: true,
         aspect: [16, 10],
         quality: 0.8,
@@ -116,19 +173,23 @@ const AddCardScreen = ({ navigation }) => {
     }
   };
 
-  // Show image picker options
-  const showImagePicker = () => {
+  // Show image options
+  const showImageOptions = () => {
     Alert.alert(
-      'Add Photo',
-      'Choose how you want to add a photo of your gift card',
+      'Add Card Photo',
+      'Choose how you want to add a photo',
       [
         {
-          text: 'Take Photo',
-          onPress: takePhoto,
+          text: '📷 Scan Card (OCR)',
+          onPress: handleScanCard,
         },
         {
-          text: 'Choose from Library',
-          onPress: pickImage,
+          text: '📸 Take Photo',
+          onPress: handleTakePhoto,
+        },
+        {
+          text: '🖼️ Choose from Library',
+          onPress: handlePickImage,
         },
         {
           text: 'Cancel',
@@ -138,8 +199,8 @@ const AddCardScreen = ({ navigation }) => {
     );
   };
 
-  // Remove selected image
-  const removeImage = () => {
+  // Remove image
+  const handleRemoveImage = () => {
     Alert.alert(
       'Remove Photo',
       'Are you sure you want to remove this photo?',
@@ -157,59 +218,13 @@ const AddCardScreen = ({ navigation }) => {
     );
   };
 
-  const validateForm = () => {
-    // Store name is required
-    if (!storeName.trim()) {
-      setError('Please enter the store name');
-      return false;
-    }
-
-    if (storeName.trim().length < 2) {
-      setError('Store name must be at least 2 characters');
-      return false;
-    }
-
-    // Validate balance if provided
-    if (balance && isNaN(parseFloat(balance))) {
-      setError('Please enter a valid balance amount');
-      return false;
-    }
-
-    if (balance && parseFloat(balance) < 0) {
-      setError('Balance cannot be negative');
-      return false;
-    }
-
-    // Validate expiration date format if provided (YYYY-MM-DD)
-    if (expirationDate) {
-      const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
-      if (!dateRegex.test(expirationDate)) {
-        setError('Expiration date must be in YYYY-MM-DD format');
-        return false;
-      }
-
-      // Check if date is valid
-      const date = new Date(expirationDate);
-      if (isNaN(date.getTime())) {
-        setError('Please enter a valid expiration date');
-        return false;
-      }
-    }
-
-    return true;
-  };
-
-  const handleAddCard = async () => {
+  // Handle form submission
+  const handleSubmit = async (cardData) => {
     setError('');
 
-    // Check if user can add more cards
+    // Check card limit
     if (!canAddMore) {
       setError(ERROR_MESSAGES.cardLimitReached);
-      return;
-    }
-
-    // Validate form
-    if (!validateForm()) {
       return;
     }
 
@@ -232,36 +247,32 @@ const AddCardScreen = ({ navigation }) => {
         imageUrl = url;
       }
 
-      // Prepare card data
-      const cardData = {
-        store_name: storeName.trim(),
-        card_number: cardNumber.trim() || null,
-        balance: balance ? parseFloat(balance) : null,
-        currency: currency || 'USD',
-        expiration_date: expirationDate || null,
-        notes: notes.trim() || null,
-        is_online: isOnline,
-        store_address: !isOnline && storeAddress.trim() ? storeAddress.trim() : null,
-        location_notifications_enabled: !isOnline,
+      // Add image URL to card data
+      const finalCardData = {
+        ...cardData,
         image_url: imageUrl,
       };
 
-      // Add card
-      const { error: addError } = await addCard(cardData);
+      // Add card to database
+      const { error: addError } = await addCard(finalCardData);
 
       if (addError) {
         throw new Error(addError);
       }
 
-      // Success
+      // Success!
       setLoading(false);
       Alert.alert(
-        'Success!',
+        '✅ Success!',
         SUCCESS_MESSAGES.cardAdded,
         [
           {
-            text: 'OK',
-            onPress: () => navigation.goBack(),
+            text: 'Add Another',
+            onPress: resetForm,
+          },
+          {
+            text: 'View Cards',
+            onPress: () => navigation.navigate('Dashboard'),
           },
         ]
       );
@@ -271,8 +282,29 @@ const AddCardScreen = ({ navigation }) => {
     }
   };
 
+  // Reset form
+  const resetForm = () => {
+    setFormData({
+      storeName: '',
+      cardNumber: '',
+      balance: '',
+      currency: 'USD',
+      expirationDate: '',
+      notes: '',
+      isOnline: false,
+      storeAddress: '',
+      imageUrl: null,
+    });
+    setImageUri(null);
+    setError('');
+  };
+
+  // Handle cancel
   const handleCancel = () => {
-    if (storeName || cardNumber || balance || notes || imageUri) {
+    const hasData = formData.storeName || formData.cardNumber || 
+                    formData.balance || formData.notes || imageUri;
+
+    if (hasData) {
       Alert.alert(
         'Discard Changes?',
         'Are you sure you want to discard this gift card?',
@@ -323,16 +355,20 @@ const AddCardScreen = ({ navigation }) => {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          {/* Info Banner */}
+          {/* Card Limit Warning */}
           {!canAddMore && (
             <View style={styles.warningBanner}>
-              <Text style={styles.warningText}>
-                ⚠️ You've reached your card limit. Upgrade to Premium for unlimited cards!
-              </Text>
+              <Text style={styles.warningIcon}>⚠️</Text>
+              <View style={styles.warningContent}>
+                <Text style={styles.warningTitle}>Card Limit Reached</Text>
+                <Text style={styles.warningText}>
+                  Upgrade to Premium for unlimited gift cards!
+                </Text>
+              </View>
             </View>
           )}
 
-          {/* Image Upload Section */}
+          {/* Image Section */}
           <View style={styles.imageSection}>
             <Text style={styles.sectionLabel}>Card Photo (Optional)</Text>
             
@@ -341,27 +377,46 @@ const AddCardScreen = ({ navigation }) => {
                 <Image source={{ uri: imageUri }} style={styles.imagePreview} />
                 <TouchableOpacity
                   style={styles.removeImageButton}
-                  onPress={removeImage}
+                  onPress={handleRemoveImage}
                 >
                   <Text style={styles.removeImageText}>✕</Text>
+                </TouchableOpacity>
+                
+                {/* Re-scan button */}
+                <TouchableOpacity
+                  style={styles.rescanButton}
+                  onPress={showImageOptions}
+                >
+                  <Text style={styles.rescanButtonText}>Change Photo</Text>
                 </TouchableOpacity>
               </View>
             ) : (
               <TouchableOpacity
                 style={styles.imagePlaceholder}
-                onPress={showImagePicker}
+                onPress={showImageOptions}
                 activeOpacity={0.7}
               >
                 <Text style={styles.imagePlaceholderIcon}>📷</Text>
                 <Text style={styles.imagePlaceholderText}>
-                  Take or upload a photo
+                  Scan or Upload Card Photo
                 </Text>
                 <Text style={styles.imagePlaceholderSubtext}>
-                  Helps you quickly identify your card
+                  Tap to scan with OCR or choose an image
                 </Text>
               </TouchableOpacity>
             )}
 
+            {/* Scanning indicator */}
+            {scanning && (
+              <View style={styles.scanningContainer}>
+                <ActivityIndicator size="small" color={COLORS.primary} />
+                <Text style={styles.scanningText}>
+                  🔍 Scanning card... This may take a few seconds
+                </Text>
+              </View>
+            )}
+
+            {/* Uploading indicator */}
             {uploadingImage && (
               <View style={styles.uploadingContainer}>
                 <ActivityIndicator size="small" color={COLORS.primary} />
@@ -370,134 +425,23 @@ const AddCardScreen = ({ navigation }) => {
             )}
           </View>
 
-          {/* Form */}
-          <View style={styles.form}>
-            {/* Store Name */}
-            <Input
-              label="Store Name *"
-              value={storeName}
-              onChangeText={setStoreName}
-              placeholder="e.g., Starbucks, Amazon, Target"
-              autoCapitalize="words"
+          {/* Error Message */}
+          {error && (
+            <ErrorMessage
+              message={error}
+              variant="error"
+              onRetry={() => setError('')}
             />
+          )}
 
-            {/* Card Number */}
-            <Input
-              label="Card Number"
-              value={cardNumber}
-              onChangeText={setCardNumber}
-              placeholder="Enter card number or code"
-              keyboardType="default"
-            />
-
-            {/* Balance */}
-            <Input
-              label="Current Balance"
-              value={balance}
-              onChangeText={setBalance}
-              placeholder="e.g., 25.00"
-              keyboardType="decimal-pad"
-              leftIcon={<Text style={styles.currencySymbol}>$</Text>}
-            />
-
-            {/* Expiration Date */}
-            <Input
-              label="Expiration Date"
-              value={expirationDate}
-              onChangeText={setExpirationDate}
-              placeholder="YYYY-MM-DD (e.g., 2025-12-31)"
-              keyboardType="default"
-            />
-
-            <View style={styles.dateHint}>
-              <Text style={styles.dateHintText}>
-                💡 Tip: Leave blank if the card doesn't expire
-              </Text>
-            </View>
-
-            {/* Card Type Toggle */}
-            <View style={styles.section}>
-              <Text style={styles.sectionLabel}>Card Type</Text>
-              <View style={styles.toggleRow}>
-                <View style={styles.toggleInfo}>
-                  <Text style={styles.toggleLabel}>
-                    {isOnline ? '🌐 Online Gift Card' : '🏪 Physical Store Card'}
-                  </Text>
-                  <Text style={styles.toggleDescription}>
-                    {isOnline
-                      ? 'Can be used online or in any store location'
-                      : 'Can only be used at specific store locations'}
-                  </Text>
-                </View>
-                <Switch
-                  value={isOnline}
-                  onValueChange={setIsOnline}
-                  trackColor={{ false: COLORS.border, true: COLORS.primary }}
-                  thumbColor={COLORS.background}
-                  ios_backgroundColor={COLORS.border}
-                />
-              </View>
-            </View>
-
-            {/* Store Address (only for physical cards) */}
-            {!isOnline && (
-              <Input
-                label="Store Location (Optional)"
-                value={storeAddress}
-                onChangeText={setStoreAddress}
-                placeholder="e.g., 123 Main St, New York, NY"
-                autoCapitalize="words"
-              />
-            )}
-
-            {/* Notes */}
-            <Input
-              label="Notes (Optional)"
-              value={notes}
-              onChangeText={setNotes}
-              placeholder="Add any additional notes about this card"
-              multiline
-              numberOfLines={4}
-            />
-
-            {/* Error Message */}
-            {error && (
-              <ErrorMessage
-                message={error}
-                variant="error"
-                onRetry={() => setError('')}
-              />
-            )}
-
-            {/* Info Card */}
-            <View style={styles.infoCard}>
-              <Text style={styles.infoIcon}>ℹ️</Text>
-              <View style={styles.infoContent}>
-                <Text style={styles.infoTitle}>Getting Started</Text>
-                <Text style={styles.infoText}>
-                  Only the store name is required. You can add more details later by editing the card.
-                </Text>
-              </View>
-            </View>
-
-            {/* Action Buttons */}
-            <View style={styles.actions}>
-              <Button
-                title="Add Gift Card"
-                onPress={handleAddCard}
-                loading={loading}
-                disabled={!canAddMore}
-                style={styles.addButton}
-              />
-
-              <Button
-                title="Cancel"
-                onPress={handleCancel}
-                variant="outline"
-                style={styles.cancelActionButton}
-              />
-            </View>
-          </View>
+          {/* Gift Card Form */}
+          <GiftCardForm
+            initialData={formData}
+            onSubmit={handleSubmit}
+            loading={loading}
+            submitButtonText="Add Gift Card"
+            onCancel={handleCancel}
+          />
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -523,6 +467,17 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: COLORS.border,
     backgroundColor: COLORS.background,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.05,
+        shadowRadius: 2,
+      },
+      android: {
+        elevation: 2,
+      },
+    }),
   },
 
   cancelButton: {
@@ -532,17 +487,17 @@ const styles = StyleSheet.create({
   cancelButtonText: {
     fontSize: FONTS.sizes.base,
     color: COLORS.primary,
-    fontWeight: FONTS.weights.medium,
+    fontWeight: FONTS.weights.semiBold,
   },
 
   headerTitle: {
     fontSize: FONTS.sizes.xl,
-    fontWeight: FONTS.weights.semiBold,
+    fontWeight: FONTS.weights.bold,
     color: COLORS.text,
   },
 
   headerSpacer: {
-    width: 60,
+    width: 70,
   },
 
   scrollView: {
@@ -554,12 +509,30 @@ const styles = StyleSheet.create({
   },
 
   warningBanner: {
+    flexDirection: 'row',
     backgroundColor: COLORS.expiringSoon,
     padding: SPACING.md,
     borderRadius: RADIUS.md,
     marginBottom: SPACING.lg,
     borderLeftWidth: 4,
     borderLeftColor: COLORS.warning,
+    alignItems: 'center',
+  },
+
+  warningIcon: {
+    fontSize: 28,
+    marginRight: SPACING.sm,
+  },
+
+  warningContent: {
+    flex: 1,
+  },
+
+  warningTitle: {
+    fontSize: FONTS.sizes.base,
+    fontWeight: FONTS.weights.bold,
+    color: COLORS.expiringSoonText,
+    marginBottom: SPACING.xs / 2,
   },
 
   warningText: {
@@ -572,11 +545,17 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.lg,
   },
 
+  sectionLabel: {
+    fontSize: FONTS.sizes.sm,
+    fontWeight: FONTS.weights.semiBold,
+    color: COLORS.text,
+    marginBottom: SPACING.sm,
+  },
+
   imagePreviewContainer: {
     position: 'relative',
     borderRadius: RADIUS.lg,
     overflow: 'hidden',
-    marginTop: SPACING.sm,
   },
 
   imagePreview: {
@@ -590,9 +569,9 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: SPACING.sm,
     right: SPACING.sm,
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     backgroundColor: COLORS.error,
     justifyContent: 'center',
     alignItems: 'center',
@@ -600,7 +579,36 @@ const styles = StyleSheet.create({
       ios: {
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.25,
+        shadowOpacity: 0.3,
+        shadowRadius: 4,
+      },
+      android: {
+        elevation: 6,
+      },
+    }),
+  },
+
+  removeImageText: {
+    color: COLORS.background,
+    fontSize: FONTS.sizes.xl,
+    fontWeight: FONTS.weights.bold,
+    lineHeight: FONTS.sizes.xl,
+  },
+
+  rescanButton: {
+    position: 'absolute',
+    bottom: SPACING.sm,
+    left: SPACING.sm,
+    right: SPACING.sm,
+    backgroundColor: COLORS.primary,
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.md,
+    borderRadius: RADIUS.md,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.2,
         shadowRadius: 4,
       },
       android: {
@@ -609,32 +617,32 @@ const styles = StyleSheet.create({
     }),
   },
 
-  removeImageText: {
+  rescanButtonText: {
     color: COLORS.background,
-    fontSize: FONTS.sizes.lg,
-    fontWeight: FONTS.weights.bold,
+    fontSize: FONTS.sizes.sm,
+    fontWeight: FONTS.weights.semiBold,
+    textAlign: 'center',
   },
 
   imagePlaceholder: {
-    height: 160,
+    height: 180,
     borderRadius: RADIUS.lg,
     borderWidth: 2,
-    borderColor: COLORS.border,
+    borderColor: COLORS.primary,
     borderStyle: 'dashed',
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: COLORS.surface,
-    marginTop: SPACING.sm,
   },
 
   imagePlaceholderIcon: {
-    fontSize: 48,
+    fontSize: 56,
     marginBottom: SPACING.sm,
   },
 
   imagePlaceholderText: {
-    fontSize: FONTS.sizes.base,
-    fontWeight: FONTS.weights.medium,
+    fontSize: FONTS.sizes.lg,
+    fontWeight: FONTS.weights.semiBold,
     color: COLORS.text,
     marginBottom: SPACING.xs / 2,
   },
@@ -642,6 +650,27 @@ const styles = StyleSheet.create({
   imagePlaceholderSubtext: {
     fontSize: FONTS.sizes.sm,
     color: COLORS.textSecondary,
+    textAlign: 'center',
+    paddingHorizontal: SPACING.lg,
+  },
+
+  scanningContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: SPACING.md,
+    padding: SPACING.md,
+    backgroundColor: COLORS.primary + '15',
+    borderRadius: RADIUS.md,
+    borderWidth: 1,
+    borderColor: COLORS.primary,
+  },
+
+  scanningText: {
+    marginLeft: SPACING.sm,
+    fontSize: FONTS.sizes.sm,
+    color: COLORS.primary,
+    fontWeight: FONTS.weights.medium,
   },
 
   uploadingContainer: {
@@ -658,114 +687,6 @@ const styles = StyleSheet.create({
     marginLeft: SPACING.sm,
     fontSize: FONTS.sizes.sm,
     color: COLORS.textSecondary,
-  },
-
-  form: {
-    marginBottom: SPACING.xl,
-  },
-
-  currencySymbol: {
-    fontSize: FONTS.sizes.base,
-    color: COLORS.textSecondary,
-    fontWeight: FONTS.weights.medium,
-  },
-
-  dateHint: {
-    backgroundColor: COLORS.surface,
-    padding: SPACING.sm,
-    borderRadius: RADIUS.sm,
-    marginTop: -SPACING.sm,
-    marginBottom: SPACING.md,
-  },
-
-  dateHintText: {
-    fontSize: FONTS.sizes.xs,
-    color: COLORS.textSecondary,
-    lineHeight: FONTS.sizes.xs * 1.5,
-  },
-
-  section: {
-    marginBottom: SPACING.lg,
-  },
-
-  sectionLabel: {
-    fontSize: FONTS.sizes.sm,
-    fontWeight: FONTS.weights.semiBold,
-    color: COLORS.text,
-    marginBottom: SPACING.sm,
-  },
-
-  toggleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: COLORS.surface,
-    padding: SPACING.md,
-    borderRadius: RADIUS.md,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-
-  toggleInfo: {
-    flex: 1,
-    marginRight: SPACING.md,
-  },
-
-  toggleLabel: {
-    fontSize: FONTS.sizes.base,
-    fontWeight: FONTS.weights.medium,
-    color: COLORS.text,
-    marginBottom: SPACING.xs / 2,
-  },
-
-  toggleDescription: {
-    fontSize: FONTS.sizes.xs,
-    color: COLORS.textSecondary,
-    lineHeight: FONTS.sizes.xs * 1.4,
-  },
-
-  infoCard: {
-    flexDirection: 'row',
-    backgroundColor: COLORS.surface,
-    padding: SPACING.md,
-    borderRadius: RADIUS.md,
-    marginBottom: SPACING.lg,
-    borderLeftWidth: 3,
-    borderLeftColor: COLORS.info,
-  },
-
-  infoIcon: {
-    fontSize: FONTS.sizes.xl,
-    marginRight: SPACING.sm,
-  },
-
-  infoContent: {
-    flex: 1,
-  },
-
-  infoTitle: {
-    fontSize: FONTS.sizes.sm,
-    fontWeight: FONTS.weights.semiBold,
-    color: COLORS.text,
-    marginBottom: SPACING.xs / 2,
-  },
-
-  infoText: {
-    fontSize: FONTS.sizes.sm,
-    color: COLORS.textSecondary,
-    lineHeight: FONTS.sizes.sm * 1.4,
-  },
-
-  actions: {
-    marginTop: SPACING.lg,
-  },
-
-  addButton: {
-    marginBottom: SPACING.sm,
-  },
-
-  cancelActionButton: {
-    marginBottom: SPACING.sm,
   },
 });
 

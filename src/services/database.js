@@ -203,18 +203,14 @@ export const getGiftCardCount = async () => {
  */
 export const checkCanAddCard = async () => {
   try {
-    // Get user's subscription status
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return false;
 
-    const { data: userProfile } = await supabase
-      .from('users')
-      .select('subscription_status, is_premium')
-      .eq('id', user.id)
-      .single();
+    // Check premium status
+    const { isPremium } = await checkPremiumStatus();
 
     // Premium users have no limit
-    if (userProfile?.is_premium || userProfile?.subscription_status === 'active') {
+    if (isPremium) {
       return true;
     }
 
@@ -311,197 +307,95 @@ export const updateUserProfile = async (updates) => {
 };
 
 // ====================================
-// PUSH NOTIFICATIONS & TOKENS
-// ====================================
-
-/**
- * Store push notification token for the current user
- * Used for sending push notifications (expiration alerts, location pings, etc.)
- * @param {string} token - Expo push token
- * @param {string} platform - 'ios' or 'android'
- * @returns {Promise<{data, error}>}
- */
-export const storePushToken = async (token, platform) => {
-  try {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) throw new Error('User not authenticated');
-
-    // Check if token already exists
-    const { data: existingToken } = await supabase
-      .from('push_tokens')
-      .select('id')
-      .eq('user_id', user.id)
-      .eq('token', token)
-      .single();
-
-    if (existingToken) {
-      // Token already exists, update last_used
-      const { data, error } = await supabase
-        .from('push_tokens')
-        .update({ last_used: new Date().toISOString() })
-        .eq('id', existingToken.id)
-        .select()
-        .single();
-
-      if (error) throw error;
-      return { data, error: null };
-    }
-
-    // Insert new token
-    const { data, error } = await supabase
-      .from('push_tokens')
-      .insert([
-        {
-          user_id: user.id,
-          token,
-          platform,
-          last_used: new Date().toISOString(),
-        },
-      ])
-      .select()
-      .single();
-
-    if (error) throw error;
-
-    return { data, error: null };
-  } catch (error) {
-    console.error('Store push token error:', error);
-    return { data: null, error: error.message };
-  }
-};
-
-/**
- * Remove push notification token (on logout or token invalidation)
- * @param {string} token - Expo push token
- * @returns {Promise<{error}>}
- */
-export const removePushToken = async (token) => {
-  try {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) throw new Error('User not authenticated');
-
-    const { error } = await supabase
-      .from('push_tokens')
-      .delete()
-      .eq('user_id', user.id)
-      .eq('token', token);
-
-    if (error) throw error;
-
-    return { error: null };
-  } catch (error) {
-    console.error('Remove push token error:', error);
-    return { error: error.message };
-  }
-};
-
-/**
- * Get all push tokens for the current user
- * @returns {Promise<{data, error}>}
- */
-export const getUserPushTokens = async () => {
-  try {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) throw new Error('User not authenticated');
-
-    const { data, error } = await supabase
-      .from('push_tokens')
-      .select('*')
-      .eq('user_id', user.id)
-      .order('last_used', { ascending: false });
-
-    if (error) throw error;
-
-    return { data, error: null };
-  } catch (error) {
-    console.error('Get user push tokens error:', error);
-    return { data: null, error: error.message };
-  }
-};
-
-/**
- * Update notification preferences in user profile
- * @param {Object} preferences - Notification settings
- * @param {boolean} preferences.location_notifications - Enable location-based notifications
- * @param {boolean} preferences.expiration_notifications - Enable expiration reminders
- * @returns {Promise<{data, error}>}
- */
-export const updateNotificationPreferences = async (preferences) => {
-  try {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) throw new Error('User not authenticated');
-
-    const { data, error } = await supabase
-      .from('users')
-      .update({
-        location_notifications_enabled: preferences.location_notifications,
-        expiration_reminders_enabled: preferences.expiration_notifications,
-      })
-      .eq('id', user.id)
-      .select()
-      .single();
-
-    if (error) throw error;
-
-    return { data, error: null };
-  } catch (error) {
-    console.error('Update notification preferences error:', error);
-    return { data: null, error: error.message };
-  }
-};
-
-// ====================================
 // SUBSCRIPTION OPERATIONS
 // ====================================
 
 /**
  * Check if user has an active premium subscription
- * @returns {Promise<{isPremium: boolean, error}>}
+ * @returns {Promise<{isPremium: boolean, subscriptionStatus: object, error}>}
  */
 export const checkPremiumStatus = async () => {
   try {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) throw new Error('User not authenticated');
 
-    const { data: userProfile, error } = await supabase
+    // Get user's profile from 'users' table (not 'profiles')
+    const { data: userProfile, error: profileError } = await supabase
       .from('users')
-      .select('subscription_status, subscription_expires_at, is_premium')
+      .select('is_premium, subscription_status, subscription_started_at, subscription_expires_at')
       .eq('id', user.id)
       .single();
 
-    if (error) throw error;
+    if (profileError) {
+      console.error('Check premium status error:', profileError);
+      // Return free tier if we can't check
+      return { isPremium: false, subscriptionStatus: null, error: profileError.message };
+    }
 
+    // Check if subscription is still valid
+    const now = new Date();
+    const expiresAt = userProfile?.subscription_expires_at ? new Date(userProfile.subscription_expires_at) : null;
+    
     const isPremium = 
-      userProfile?.is_premium ||
-      (userProfile?.subscription_status === 'active' && 
-       (!userProfile.subscription_expires_at || new Date(userProfile.subscription_expires_at) > new Date()));
+      userProfile?.is_premium === true ||
+      (userProfile?.subscription_status === 'active' && (!expiresAt || expiresAt > now));
 
-    return { isPremium, error: null };
+    return { 
+      isPremium, 
+      subscriptionStatus: userProfile,
+      error: null 
+    };
   } catch (error) {
     console.error('Check premium status error:', error);
-    return { isPremium: false, error: error.message };
+    return { isPremium: false, subscriptionStatus: null, error: error.message };
   }
 };
 
 /**
- * Update subscription status after purchase
- * @param {Object} subscriptionData - Subscription details
- * @param {string} subscriptionData.status - 'free', 'active', 'canceled', 'expired'
- * @param {string} subscriptionData.expiresAt - ISO date string
+ * Create a new subscription after successful purchase
+ * @param {Object} subscriptionData - Purchase details
  * @returns {Promise<{data, error}>}
  */
-export const updateSubscription = async (subscriptionData) => {
+export const createSubscription = async (subscriptionData) => {
   try {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) throw new Error('User not authenticated');
 
+    // Update user profile to premium status
+    const { error: profileError } = await supabase
+      .from('users')
+      .update({
+        is_premium: true,
+        subscription_status: 'active',
+        subscription_started_at: new Date().toISOString(),
+        subscription_expires_at: subscriptionData.expiresAt,
+      })
+      .eq('id', user.id);
+
+    if (profileError) throw profileError;
+
+    return { data: { success: true }, error: null };
+  } catch (error) {
+    console.error('Create subscription error:', error);
+    return { data: null, error: error.message };
+  }
+};
+
+/**
+ * Cancel subscription
+ * @returns {Promise<{data, error}>}
+ */
+export const cancelSubscription = async () => {
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error('User not authenticated');
+
+    // Update profile - set to free
     const { data, error } = await supabase
       .from('users')
       .update({
-        subscription_status: subscriptionData.status,
-        subscription_expires_at: subscriptionData.expiresAt,
-        subscription_started_at: subscriptionData.status === 'active' ? new Date().toISOString() : undefined,
-        is_premium: subscriptionData.status === 'active',
+        is_premium: false,
+        subscription_status: 'free',
       })
       .eq('id', user.id)
       .select()
@@ -511,7 +405,7 @@ export const updateSubscription = async (subscriptionData) => {
 
     return { data, error: null };
   } catch (error) {
-    console.error('Update subscription error:', error);
+    console.error('Cancel subscription error:', error);
     return { data: null, error: error.message };
   }
 };
@@ -614,15 +508,10 @@ export default {
   getUserProfile,
   updateUserProfile,
   
-  // Push notifications
-  storePushToken,
-  removePushToken,
-  getUserPushTokens,
-  updateNotificationPreferences,
-  
   // Subscriptions
   checkPremiumStatus,
-  updateSubscription,
+  createSubscription,
+  cancelSubscription,
   
   // Statistics
   getUserStatistics,

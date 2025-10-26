@@ -311,8 +311,7 @@ const SettingsScreen = ({ navigation }) => {
               <TouchableOpacity
                 style={styles.upgradeButton}
                 onPress={() => {
-                  // TODO: Navigate to subscription screen in Phase 11
-                  Alert.alert('Coming Soon', 'Premium subscription coming in Phase 11!');
+                  navigation.navigate('Subscription');
                 }}
               >
                 <Text style={styles.upgradeButtonText}>Upgrade to Premium</Text>

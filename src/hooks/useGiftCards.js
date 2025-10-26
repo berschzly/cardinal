@@ -45,10 +45,12 @@ export const useGiftCards = (autoFetch = true) => {
   /**
    * Fetch card count and check if user can add more
    */
+
   const fetchCardCount = useCallback(async () => {
     const { count } = await getGiftCardCount();
     setCardCount(count || 0);
 
+    // Check if user can add more cards (considers premium status)
     const canAdd = await checkCanAddCard();
     setCanAddMore(canAdd);
   }, []);

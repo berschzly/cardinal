@@ -10,6 +10,7 @@ import {
   Platform,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { BannerAd, BannerAdSize, TestIds } from 'react-native-google-mobile-ads';
 import { useGiftCards } from '../../hooks/useGiftCards';
 import { useAuth } from '../../hooks/useAuth';
 import GiftCardItem from '../../components/cards/GiftCardItem';
@@ -21,6 +22,14 @@ import { isCardExpiringSoon, isCardExpired, daysUntilExpiration } from '../../ut
 
 const { width } = Dimensions.get('window');
 const isSmallDevice = width < 375;
+
+// AdMob Ad Unit IDs - Replace with your actual IDs from Google AdMob console
+const AD_UNIT_ID = __DEV__ 
+  ? TestIds.BANNER 
+  : Platform.select({
+      ios: 'ca-app-pub-XXXXXXXXXXXXXXXX/XXXXXXXXXX', // Replace with your iOS Ad Unit ID
+      android: 'ca-app-pub-XXXXXXXXXXXXXXXX/XXXXXXXXXX', // Replace with your Android Ad Unit ID
+    });
 
 /**
  * Sort cards by expiration status
@@ -54,9 +63,38 @@ const sortCardsByExpiration = (cards) => {
   });
 };
 
+/**
+ * Insert ads into card list at regular intervals
+ * Ads are placed every 3 cards for free users
+ */
+const insertAdsIntoCards = (cards, isPremium) => {
+  if (isPremium || cards.length === 0) {
+    return cards.map(card => ({ type: 'card', data: card }));
+  }
+
+  const itemsWithAds = [];
+  const AD_FREQUENCY = 3; // Show ad every 3 cards
+
+  cards.forEach((card, index) => {
+    itemsWithAds.push({ type: 'card', data: card, id: card.id });
+
+    // Insert ad after every AD_FREQUENCY cards (but not after the last card)
+    if ((index + 1) % AD_FREQUENCY === 0 && index < cards.length - 1) {
+      itemsWithAds.push({ 
+        type: 'ad', 
+        id: `ad_${index}`,
+        adIndex: Math.floor(index / AD_FREQUENCY)
+      });
+    }
+  });
+
+  return itemsWithAds;
+};
+
 const DashboardScreen = ({ navigation }) => {
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
+  const { isPremium } = useSubscription();
   const {
     cards,
     loading,
@@ -87,6 +125,9 @@ const DashboardScreen = ({ navigation }) => {
   const activeCards = cards.filter((card) => !card.is_used);
   const sortedActiveCards = sortCardsByExpiration(activeCards);
   const usedCards = cards.filter((card) => card.is_used);
+
+  // Insert ads into the card list for free users
+  const listItems = insertAdsIntoCards(sortedActiveCards, isPremium);
 
   // Count cards by expiration status
   const expiringCards = activeCards.filter((card) => isCardExpiringSoon(card.expiration_date));
@@ -124,6 +165,8 @@ const DashboardScreen = ({ navigation }) => {
 
   // Render card limit info (for free users)
   const CardLimitInfo = () => {
+    if (isPremium) return null;
+
     if (canAddMore) {
       return (
         <View style={styles.limitInfo}>
@@ -142,6 +185,9 @@ const DashboardScreen = ({ navigation }) => {
         <TouchableOpacity 
           style={styles.upgradeButton}
           activeOpacity={0.8}
+          onPress={() => navigation.navigate('Settings', {
+            screen: 'Subscription'
+          })}
         >
           <Text style={styles.upgradeButtonText}>Upgrade</Text>
         </TouchableOpacity>
@@ -169,18 +215,55 @@ const DashboardScreen = ({ navigation }) => {
     );
   };
 
-  // Render individual card with expiration badge
-  const renderCard = ({ item }) => (
-    <View style={styles.cardContainer}>
-      <GiftCardItem card={item} onPress={() => handleCardPress(item)} />
-      {item.expiration_date && (
-        <ExpirationBadge 
-          expirationDate={item.expiration_date} 
-          style={styles.expirationBadge} 
-        />
-      )}
-    </View>
-  );
+  // Ad Banner Component - styled to match gift cards
+  const AdBanner = ({ adIndex }) => {
+    const [adError, setAdError] = useState(false);
+
+    if (adError) {
+      return null; // Hide ad if it fails to load
+    }
+
+    return (
+      <View style={styles.adContainer}>
+        <View style={styles.adCard}>
+          <View style={styles.adLabel}>
+            <Text style={styles.adLabelText}>SPONSORED</Text>
+          </View>
+          <BannerAd
+            unitId={AD_UNIT_ID}
+            size={BannerAdSize.LARGE_BANNER}
+            requestOptions={{
+              requestNonPersonalizedAdsOnly: false,
+            }}
+            onAdFailedToLoad={(error) => {
+              console.log('Ad failed to load:', error);
+              setAdError(true);
+            }}
+          />
+        </View>
+      </View>
+    );
+  };
+
+  // Render individual list item (card or ad)
+  const renderItem = ({ item }) => {
+    if (item.type === 'ad') {
+      return <AdBanner adIndex={item.adIndex} />;
+    }
+
+    // Render gift card
+    return (
+      <View style={styles.cardContainer}>
+        <GiftCardItem card={item.data} onPress={() => handleCardPress(item.data)} />
+        {item.data.expiration_date && (
+          <ExpirationBadge 
+            expirationDate={item.data.expiration_date} 
+            style={styles.expirationBadge} 
+          />
+        )}
+      </View>
+    );
+  };
 
   if (loading && cards.length === 0) {
     return <Loading fullScreen text="Loading your gift cards..." />;
@@ -228,11 +311,11 @@ const DashboardScreen = ({ navigation }) => {
         <ErrorMessage message={error} variant="error" onRetry={refresh} />
       )}
 
-      {/* Gift Cards List */}
+      {/* Gift Cards List with Ads */}
       <FlatList
-        data={sortedActiveCards}
+        data={listItems}
         keyExtractor={(item) => item.id}
-        renderItem={renderCard}
+        renderItem={renderItem}
         contentContainerStyle={[
           styles.listContent,
           { paddingBottom: bottomPadding },
@@ -413,6 +496,44 @@ const styles = StyleSheet.create({
   expirationBadge: {
     marginTop: SPACING.xs,
     marginLeft: SPACING.sm,
+  },
+
+  // Ad Styles - Designed to blend with gift cards
+  adContainer: {
+    marginBottom: SPACING.md,
+  },
+
+  adCard: {
+    backgroundColor: COLORS.surface,
+    borderRadius: SPACING.md,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: COLORS.border || '#E5E7EB',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.08,
+        shadowRadius: 4,
+      },
+      android: {
+        elevation: 2,
+      },
+    }),
+  },
+
+  adLabel: {
+    backgroundColor: COLORS.primary,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: SPACING.xs / 2,
+    alignSelf: 'flex-start',
+  },
+
+  adLabelText: {
+    fontSize: FONTS.sizes.xs,
+    fontWeight: FONTS.weights.bold,
+    color: COLORS.background,
+    letterSpacing: 0.5,
   },
 
   listContent: {

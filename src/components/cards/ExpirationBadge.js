@@ -1,86 +1,62 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
+import { getExpirationStatus } from '../../utils/helpers';
 import { COLORS, FONTS, SPACING, RADIUS } from '../../utils/constants';
 
 /**
  * ExpirationBadge Component
  * Shows expiration status with color coding
- * @param {Date|string} expirationDate - Card expiration date
- * @param {Object} style - Additional styles
  */
 const ExpirationBadge = ({ expirationDate, style }) => {
-  if (!expirationDate) return null;
+  const status = getExpirationStatus(expirationDate);
 
-  const getExpirationInfo = () => {
-    const today = new Date();
-    const expDate = new Date(expirationDate);
-    const daysUntilExpiration = Math.ceil((expDate - today) / (1000 * 60 * 60 * 24));
-
-    if (daysUntilExpiration < 0) {
-      return {
-        text: 'Expired',
-        icon: '❌',
-        variant: 'expired',
-      };
-    } else if (daysUntilExpiration === 0) {
-      return {
-        text: 'Expires Today',
-        icon: '⚠️',
-        variant: 'critical',
-      };
-    } else if (daysUntilExpiration <= 7) {
-      return {
-        text: `Expires in ${daysUntilExpiration}d`,
-        icon: '⚠️',
-        variant: 'critical',
-      };
-    } else if (daysUntilExpiration <= 30) {
-      return {
-        text: `Expires in ${daysUntilExpiration}d`,
-        icon: '⏰',
-        variant: 'warning',
-      };
-    } else {
-      return {
-        text: `Expires ${expDate.toLocaleDateString()}`,
-        icon: '✓',
-        variant: 'active',
-      };
-    }
-  };
-
-  const info = getExpirationInfo();
+  if (!expirationDate || status.status === 'valid') {
+    return null; // Don't show badge for valid cards
+  }
 
   const getBadgeStyle = () => {
-    switch (info.variant) {
+    switch (status.status) {
       case 'expired':
         return styles.badgeExpired;
       case 'critical':
         return styles.badgeCritical;
-      case 'warning':
-        return styles.badgeWarning;
+      case 'expiring':
+        return styles.badgeExpiring;
       default:
-        return styles.badgeActive;
+        return styles.badgeValid;
     }
   };
 
   const getTextStyle = () => {
-    switch (info.variant) {
+    switch (status.status) {
       case 'expired':
         return styles.textExpired;
       case 'critical':
         return styles.textCritical;
-      case 'warning':
-        return styles.textWarning;
+      case 'expiring':
+        return styles.textExpiring;
       default:
-        return styles.textActive;
+        return styles.textValid;
+    }
+  };
+
+  const getIcon = () => {
+    switch (status.status) {
+      case 'expired':
+        return '❌';
+      case 'critical':
+        return '⚠️';
+      case 'expiring':
+        return '⏰';
+      default:
+        return '✓';
     }
   };
 
   return (
     <View style={[styles.badge, getBadgeStyle(), style]}>
-      <Text style={styles.icon}>{info.icon}</Text>
-      <Text style={[styles.text, getTextStyle()]}>{info.text}</Text>
+      <Text style={styles.icon}>{getIcon()}</Text>
+      <Text style={[styles.text, getTextStyle()]}>{status.message}</Text>
     </View>
   );
 };
@@ -92,22 +68,31 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.sm,
     paddingVertical: SPACING.xs,
     borderRadius: RADIUS.full,
+    alignSelf: 'flex-start',
   },
 
   badgeExpired: {
     backgroundColor: COLORS.expired,
+    borderWidth: 1,
+    borderColor: COLORS.error,
   },
 
   badgeCritical: {
     backgroundColor: COLORS.expiringSoon,
+    borderWidth: 1,
+    borderColor: COLORS.warning,
   },
 
-  badgeWarning: {
+  badgeExpiring: {
     backgroundColor: COLORS.expiringSoon,
+    borderWidth: 1,
+    borderColor: COLORS.warning + '80',
   },
 
-  badgeActive: {
+  badgeValid: {
     backgroundColor: COLORS.active,
+    borderWidth: 1,
+    borderColor: COLORS.success,
   },
 
   icon: {
@@ -128,11 +113,11 @@ const styles = StyleSheet.create({
     color: COLORS.expiringSoonText,
   },
 
-  textWarning: {
+  textExpiring: {
     color: COLORS.expiringSoonText,
   },
 
-  textActive: {
+  textValid: {
     color: COLORS.activeText,
   },
 });

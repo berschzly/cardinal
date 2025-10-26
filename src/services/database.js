@@ -207,14 +207,14 @@ export const checkCanAddCard = async () => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return false;
 
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('subscription_status')
+    const { data: userProfile } = await supabase
+      .from('users')
+      .select('subscription_status, is_premium')
       .eq('id', user.id)
       .single();
 
     // Premium users have no limit
-    if (profile?.subscription_status === 'premium') {
+    if (userProfile?.is_premium || userProfile?.subscription_status === 'active') {
       return true;
     }
 
@@ -270,7 +270,7 @@ export const getUserProfile = async () => {
     if (!user) throw new Error('User not authenticated');
 
     const { data, error } = await supabase
-      .from('profiles')
+      .from('users')
       .select('*')
       .eq('id', user.id)
       .single();
@@ -295,7 +295,7 @@ export const updateUserProfile = async (updates) => {
     if (!user) throw new Error('User not authenticated');
 
     const { data, error } = await supabase
-      .from('profiles')
+      .from('users')
       .update(updates)
       .eq('id', user.id)
       .select()
@@ -424,7 +424,6 @@ export const getUserPushTokens = async () => {
  * @param {Object} preferences - Notification settings
  * @param {boolean} preferences.location_notifications - Enable location-based notifications
  * @param {boolean} preferences.expiration_notifications - Enable expiration reminders
- * @param {boolean} preferences.online_ping_notifications - Enable online usage reminders
  * @returns {Promise<{data, error}>}
  */
 export const updateNotificationPreferences = async (preferences) => {
@@ -433,11 +432,10 @@ export const updateNotificationPreferences = async (preferences) => {
     if (!user) throw new Error('User not authenticated');
 
     const { data, error } = await supabase
-      .from('profiles')
+      .from('users')
       .update({
         location_notifications_enabled: preferences.location_notifications,
-        expiration_notifications_enabled: preferences.expiration_notifications,
-        online_ping_notifications_enabled: preferences.online_ping_notifications,
+        expiration_reminders_enabled: preferences.expiration_notifications,
       })
       .eq('id', user.id)
       .select()
@@ -465,17 +463,18 @@ export const checkPremiumStatus = async () => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) throw new Error('User not authenticated');
 
-    const { data: profile, error } = await supabase
-      .from('profiles')
-      .select('subscription_status, subscription_expires_at')
+    const { data: userProfile, error } = await supabase
+      .from('users')
+      .select('subscription_status, subscription_expires_at, is_premium')
       .eq('id', user.id)
       .single();
 
     if (error) throw error;
 
     const isPremium = 
-      profile?.subscription_status === 'premium' && 
-      (!profile.subscription_expires_at || new Date(profile.subscription_expires_at) > new Date());
+      userProfile?.is_premium ||
+      (userProfile?.subscription_status === 'active' && 
+       (!userProfile.subscription_expires_at || new Date(userProfile.subscription_expires_at) > new Date()));
 
     return { isPremium, error: null };
   } catch (error) {
@@ -487,8 +486,7 @@ export const checkPremiumStatus = async () => {
 /**
  * Update subscription status after purchase
  * @param {Object} subscriptionData - Subscription details
- * @param {string} subscriptionData.status - 'free', 'premium', 'trial'
- * @param {string} subscriptionData.platform - 'ios', 'android', 'web'
+ * @param {string} subscriptionData.status - 'free', 'active', 'canceled', 'expired'
  * @param {string} subscriptionData.expiresAt - ISO date string
  * @returns {Promise<{data, error}>}
  */
@@ -498,11 +496,12 @@ export const updateSubscription = async (subscriptionData) => {
     if (!user) throw new Error('User not authenticated');
 
     const { data, error } = await supabase
-      .from('profiles')
+      .from('users')
       .update({
         subscription_status: subscriptionData.status,
-        subscription_platform: subscriptionData.platform,
         subscription_expires_at: subscriptionData.expiresAt,
+        subscription_started_at: subscriptionData.status === 'active' ? new Date().toISOString() : undefined,
+        is_premium: subscriptionData.status === 'active',
       })
       .eq('id', user.id)
       .select()

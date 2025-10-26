@@ -13,6 +13,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { BannerAd, BannerAdSize, TestIds } from 'react-native-google-mobile-ads';
 import { useGiftCards } from '../../hooks/useGiftCards';
 import { useAuth } from '../../hooks/useAuth';
+import { useSubscription } from '../../hooks/useSubscription';
 import GiftCardItem from '../../components/cards/GiftCardItem';
 import ExpirationBadge from '../../components/cards/ExpirationBadge';
 import Loading from '../../components/common/Loading';
@@ -23,12 +24,14 @@ import { isCardExpiringSoon, isCardExpired, daysUntilExpiration } from '../../ut
 const { width } = Dimensions.get('window');
 const isSmallDevice = width < 375;
 
-// AdMob Ad Unit IDs - Replace with your actual IDs from Google AdMob console
+import Constants from 'expo-constants';
+
+// AdMob Ad Unit IDs - Get from env or use test IDs in development
 const AD_UNIT_ID = __DEV__ 
   ? TestIds.BANNER 
   : Platform.select({
-      ios: 'ca-app-pub-XXXXXXXXXXXXXXXX/XXXXXXXXXX', // Replace with your iOS Ad Unit ID
-      android: 'ca-app-pub-XXXXXXXXXXXXXXXX/XXXXXXXXXX', // Replace with your Android Ad Unit ID
+      ios: Constants.expoConfig?.extra?.admobIosBannerId || TestIds.BANNER,
+      android: Constants.expoConfig?.extra?.admobAndroidBannerId || TestIds.BANNER,
     });
 
 /**

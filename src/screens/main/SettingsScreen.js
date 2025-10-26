@@ -326,6 +326,22 @@ const SettingsScreen = ({ navigation }) => {
 
           <TouchableOpacity
             style={styles.settingItem}
+            onPress={() => navigation.navigate('Support')}
+          >
+            <View style={styles.settingItemLeft}>
+              <Text style={styles.settingItemIcon}>🆘</Text>
+              <View style={styles.settingItemText}>
+                <Text style={styles.settingItemLabel}>Help & Support</Text>
+                <Text style={styles.settingItemDescription}>
+                  FAQ, contact us, and documentation
+                </Text>
+              </View>
+            </View>
+            <Text style={styles.settingItemArrow}>›</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.settingItem}
             onPress={() => {
               Alert.alert('Cardinal', 'Version 1.0.0\n\nA simple gift card manager.');
             }}

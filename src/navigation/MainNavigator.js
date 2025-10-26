@@ -8,6 +8,7 @@ import AddCardScreen from '../screens/main/AddCardScreen';
 import SettingsScreen from '../screens/main/SettingsScreen';
 import ProfileScreen from '../screens/main/ProfileScreen';
 import SubscriptionScreen from '../screens/main/SubscriptionScreen';
+import SupportScreen from '../screens/main/SupportScreen';
 import { COLORS, FONTS, SPACING } from '../utils/constants';
 
 const Tab = createBottomTabNavigator();
@@ -54,7 +55,7 @@ const DashboardStack = () => {
   );
 };
 
-// Settings Stack Navigator (includes ProfileScreen)
+// Settings Stack Navigator (includes ProfileScreen, SubscriptionScreen, SupportScreen)
 const SettingsStack = () => {
   return (
     <Stack.Navigator
@@ -67,6 +68,7 @@ const SettingsStack = () => {
       <Stack.Screen name="SettingsHome" component={SettingsScreen} />
       <Stack.Screen name="Profile" component={ProfileScreen} />
       <Stack.Screen name="Subscription" component={SubscriptionScreen} />
+      <Stack.Screen name="Support" component={SupportScreen} />
     </Stack.Navigator>
   );
 };

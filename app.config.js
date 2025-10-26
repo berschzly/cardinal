@@ -4,11 +4,11 @@ export default {
     slug: "cardinal",
     version: "1.0.0",
     orientation: "portrait",
-    icon: "./assets/icon.png",
+    icon: "./src/assets/icons/icon.png",
     userInterfaceStyle: "light",
     newArchEnabled: true,
     splash: {
-      image: "src/assets/icons/icon.png",
+      image: "./src/assets/icons/icon.png",
       resizeMode: "contain",
       backgroundColor: "#6366F1"
     },
@@ -19,13 +19,13 @@ export default {
     android: {
       package: "com.cardinal.app",
       adaptiveIcon: {
-        foregroundImage: "src/assets/icons/icon.png",
+        foregroundImage: "./src/assets/icons/icon.png",
         backgroundColor: "#6366F1"
       },
       edgeToEdgeEnabled: true
     },
     web: {
-      favicon: "src/assets/icons/icon.png"
+      favicon: "./src/assets/icons/icon.png"
     },
     plugins: [
       [

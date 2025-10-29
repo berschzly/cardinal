@@ -7,6 +7,8 @@ import {
   TouchableOpacity,
   Switch,
   Platform,
+  FlatList,
+  ActivityIndicator,
 } from 'react-native';
 import Input from '../common/Input';
 import Button from '../common/Button';
@@ -17,11 +19,12 @@ import {
   validateExpirationDate,
   validateNotes,
 } from '../../utils/validators';
+import { searchStoreLocations } from '../../services/database';
 import { COLORS, FONTS, SPACING, RADIUS } from '../../utils/constants';
 
 /**
  * GiftCardForm Component
- * Reusable form for adding/editing gift cards
+ * Reusable form for adding/editing gift cards with store location support
  * @param {Object} initialData - Initial form values (for editing)
  * @param {Function} onSubmit - Function to call on form submission
  * @param {Function} onCancel - Function to call when canceling
@@ -45,8 +48,14 @@ const GiftCardForm = ({
     notes: '',
     isOnline: false,
     storeAddress: '',
+    storeLocationId: null,
     locationNotificationsEnabled: true,
   });
+
+  // Location state
+  const [locationSuggestions, setLocationSuggestions] = useState([]);
+  const [loadingLocations, setLoadingLocations] = useState(false);
+  const [showLocationSuggestions, setShowLocationSuggestions] = useState(false);
 
   // Error state
   const [errors, setErrors] = useState({});
@@ -55,18 +64,72 @@ const GiftCardForm = ({
   useEffect(() => {
     if (initialData) {
       setFormData({
-        storeName: initialData.storeName || '',
-        cardNumber: initialData.cardNumber || '',
+        storeName: initialData.store_name || '',
+        cardNumber: initialData.card_number || '',
         balance: initialData.balance?.toString() || '',
         currency: initialData.currency || 'USD',
-        expirationDate: initialData.expirationDate || '',
+        expirationDate: initialData.expiration_date || '',
         notes: initialData.notes || '',
-        isOnline: initialData.isOnline || false,
-        storeAddress: initialData.storeAddress || '',
-        locationNotificationsEnabled: initialData.locationNotificationsEnabled ?? true,
+        isOnline: initialData.is_online || false,
+        storeAddress: initialData.store_address || '',
+        storeLocationId: initialData.store_location_id || null,
+        locationNotificationsEnabled: initialData.location_notifications_enabled ?? true,
       });
     }
   }, [initialData]);
+
+  // Search for store locations when store name changes
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (!formData.isOnline && formData.storeName.length >= 2) {
+        searchLocations(formData.storeName);
+      } else {
+        setLocationSuggestions([]);
+        setShowLocationSuggestions(false);
+      }
+    }, 300); // Debounce
+
+    return () => clearTimeout(timer);
+  }, [formData.storeName, formData.isOnline]);
+
+  // Search for store locations
+  const searchLocations = async (query) => {
+    if (!query || query.length < 2) return;
+    
+    setLoadingLocations(true);
+    
+    const { data, error } = await searchStoreLocations(query);
+    
+    if (data && data.length > 0) {
+      setLocationSuggestions(data);
+      setShowLocationSuggestions(true);
+    } else {
+      setLocationSuggestions([]);
+      setShowLocationSuggestions(false);
+    }
+    
+    setLoadingLocations(false);
+  };
+
+  // Handle location selection
+  const handleLocationSelect = (location) => {
+    const fullAddress = [
+      location.address,
+      location.city,
+      location.state,
+      location.zip_code,
+    ]
+      .filter(Boolean)
+      .join(', ');
+
+    setFormData((prev) => ({
+      ...prev,
+      storeAddress: fullAddress,
+      storeLocationId: location.id,
+    }));
+
+    setShowLocationSuggestions(false);
+  };
 
   // Handle input change
   const handleInputChange = (field, value) => {
@@ -82,6 +145,14 @@ const GiftCardForm = ({
         delete newErrors[field];
         return newErrors;
       });
+    }
+
+    // Clear location ID when address is manually changed
+    if (field === 'storeAddress') {
+      setFormData((prev) => ({
+        ...prev,
+        storeLocationId: null,
+      }));
     }
   };
 
@@ -155,14 +226,35 @@ const GiftCardForm = ({
       notes: formData.notes.trim() || null,
       is_online: formData.isOnline,
       store_address: !formData.isOnline && formData.storeAddress ? formData.storeAddress.trim() : null,
+      store_location_id: !formData.isOnline ? formData.storeLocationId : null,
       location_notifications_enabled: formData.isOnline ? false : formData.locationNotificationsEnabled,
     };
 
     onSubmit(parsedData);
   };
 
+  const renderLocationSuggestion = ({ item }) => (
+    <TouchableOpacity
+      style={styles.locationSuggestion}
+      onPress={() => handleLocationSelect(item)}
+      activeOpacity={0.7}
+    >
+      <View style={styles.locationIcon}>
+        <Text style={styles.locationIconText}>📍</Text>
+      </View>
+      <View style={styles.locationInfo}>
+        <Text style={styles.locationName}>{item.store_name}</Text>
+        <Text style={styles.locationAddress}>
+          {[item.address, item.city, item.state]
+            .filter(Boolean)
+            .join(', ')}
+        </Text>
+      </View>
+    </TouchableOpacity>
+  );
+
   return (
-    <View style={styles.container}>
+    <ScrollView style={styles.container} keyboardShouldPersistTaps="handled">
       {/* Store Name */}
       <Input
         label="Store Name *"
@@ -265,14 +357,44 @@ const GiftCardForm = ({
 
       {/* Store Address (only for physical cards) */}
       {!formData.isOnline && (
-        <Input
-          label="Store Location (Optional)"
-          value={formData.storeAddress}
-          onChangeText={(value) => handleInputChange('storeAddress', value)}
-          placeholder="e.g., 123 Main St, New York, NY"
-          autoCapitalize="words"
-          autoCorrect={false}
-        />
+        <>
+          <Input
+            label="Store Location (Optional)"
+            value={formData.storeAddress}
+            onChangeText={(value) => handleInputChange('storeAddress', value)}
+            placeholder="Enter address or select from suggestions"
+            autoCapitalize="words"
+            autoCorrect={false}
+          />
+
+          {/* Location Suggestions */}
+          {showLocationSuggestions && locationSuggestions.length > 0 && (
+            <View style={styles.suggestionsContainer}>
+              <View style={styles.suggestionsHeader}>
+                <Text style={styles.suggestionsTitle}>📍 Suggested Locations</Text>
+                {loadingLocations && (
+                  <ActivityIndicator size="small" color={COLORS.primary} />
+                )}
+              </View>
+              <FlatList
+                data={locationSuggestions}
+                renderItem={renderLocationSuggestion}
+                keyExtractor={(item) => item.id}
+                scrollEnabled={false}
+                style={styles.suggestionsList}
+              />
+            </View>
+          )}
+
+          {/* Location Helper Text */}
+          {formData.storeLocationId && (
+            <View style={styles.locationSelectedBadge}>
+              <Text style={styles.locationSelectedText}>
+                ✓ Location selected from database
+              </Text>
+            </View>
+          )}
+        </>
       )}
 
       {/* Location Notifications Toggle (only for physical cards) */}
@@ -343,7 +465,7 @@ const GiftCardForm = ({
           />
         )}
       </View>
-    </View>
+    </ScrollView>
   );
 };
 
@@ -457,6 +579,89 @@ const styles = StyleSheet.create({
     fontWeight: FONTS.weights.bold,
   },
 
+  suggestionsContainer: {
+    backgroundColor: COLORS.surface,
+    borderRadius: RADIUS.md,
+    marginBottom: SPACING.md,
+    marginTop: -SPACING.xs,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    overflow: 'hidden',
+  },
+
+  suggestionsHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: SPACING.sm,
+    backgroundColor: COLORS.primary + '10',
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+  },
+
+  suggestionsTitle: {
+    fontSize: FONTS.sizes.sm,
+    fontWeight: FONTS.weights.semiBold,
+    color: COLORS.primary,
+  },
+
+  suggestionsList: {
+    maxHeight: 200,
+  },
+
+  locationSuggestion: {
+    flexDirection: 'row',
+    padding: SPACING.md,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.divider,
+    alignItems: 'center',
+  },
+
+  locationIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: RADIUS.md,
+    backgroundColor: COLORS.primary + '15',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: SPACING.sm,
+  },
+
+  locationIconText: {
+    fontSize: 20,
+  },
+
+  locationInfo: {
+    flex: 1,
+  },
+
+  locationName: {
+    fontSize: FONTS.sizes.base,
+    fontWeight: FONTS.weights.semiBold,
+    color: COLORS.text,
+    marginBottom: 2,
+  },
+
+  locationAddress: {
+    fontSize: FONTS.sizes.sm,
+    color: COLORS.textSecondary,
+    lineHeight: FONTS.sizes.sm * 1.4,
+  },
+
+  locationSelectedBadge: {
+    backgroundColor: COLORS.success + '15',
+    padding: SPACING.sm,
+    borderRadius: RADIUS.sm,
+    marginBottom: SPACING.md,
+    marginTop: -SPACING.xs,
+  },
+
+  locationSelectedText: {
+    fontSize: FONTS.sizes.sm,
+    color: COLORS.success,
+    fontWeight: FONTS.weights.medium,
+  },
+
   notificationSection: {
     backgroundColor: COLORS.surface,
     padding: SPACING.md,
@@ -537,6 +742,7 @@ const styles = StyleSheet.create({
 
   actions: {
     marginTop: SPACING.md,
+    paddingBottom: SPACING.xl,
   },
 
   submitButton: {

@@ -9,6 +9,7 @@ import {
   Alert,
   KeyboardAvoidingView,
   Platform,
+  Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useGiftCards } from '../../hooks/useGiftCards';
@@ -171,6 +172,22 @@ const CardDetailsScreen = ({ route, navigation }) => {
     setError('');
   };
 
+  const openMaps = () => {
+    if (!card?.store_location) return;
+
+    const { latitude, longitude, address, store_name } = card.store_location;
+    const label = encodeURIComponent(`${store_name} - ${address}`);
+    
+    const url = Platform.select({
+      ios: `maps:0,0?q=${label}@${latitude},${longitude}`,
+      android: `geo:0,0?q=${latitude},${longitude}(${label})`,
+    });
+
+    Linking.openURL(url).catch(() => {
+      Alert.alert('Error', 'Unable to open maps');
+    });
+  };
+
   const formatCurrency = (amount, currency = 'USD') => {
     if (!amount && amount !== 0) return 'No balance';
     return new Intl.NumberFormat('en-US', {
@@ -187,6 +204,14 @@ const CardDetailsScreen = ({ route, navigation }) => {
       month: 'long',
       day: 'numeric',
     });
+  };
+
+  const formatDistance = (distanceKm) => {
+    if (!distanceKm) return '';
+    if (distanceKm < 1) {
+      return `${(distanceKm * 1000).toFixed(0)}m away`;
+    }
+    return `${distanceKm.toFixed(1)}km away`;
   };
 
   if (loading) {
@@ -360,8 +385,36 @@ const CardDetailsScreen = ({ route, navigation }) => {
                 </Text>
               </View>
 
-              {/* Store Address */}
-              {card.store_address && (
+              {/* Store Location (if available) */}
+              {card.store_location && (
+                <TouchableOpacity
+                  style={styles.locationCard}
+                  onPress={openMaps}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.locationHeader}>
+                    <Text style={styles.locationIcon}>📍</Text>
+                    <View style={styles.locationTextContainer}>
+                      <Text style={styles.locationTitle}>Store Location</Text>
+                      <Text style={styles.locationAddress}>
+                        {card.store_location.address}
+                      </Text>
+                      {card.store_location.city && card.store_location.state && (
+                        <Text style={styles.locationCity}>
+                          {card.store_location.city}, {card.store_location.state}
+                        </Text>
+                      )}
+                    </View>
+                  </View>
+                  <View style={styles.locationFooter}>
+                    <Text style={styles.locationAction}>Tap to open in Maps</Text>
+                    <Text style={styles.locationArrow}>→</Text>
+                  </View>
+                </TouchableOpacity>
+              )}
+
+              {/* Store Address (manual entry, no location link) */}
+              {card.store_address && !card.store_location && (
                 <View style={styles.infoRow}>
                   <Text style={styles.infoLabel}>Store Location</Text>
                   <Text style={styles.infoValue}>{card.store_address}</Text>
@@ -563,6 +616,68 @@ const styles = StyleSheet.create({
 
   expirationBadge: {
     marginLeft: SPACING.sm,
+  },
+
+  locationCard: {
+    backgroundColor: COLORS.surface,
+    borderRadius: RADIUS.lg,
+    marginBottom: SPACING.sm,
+    borderWidth: 2,
+    borderColor: COLORS.primary + '30',
+    overflow: 'hidden',
+    ...SHADOWS.md,
+  },
+
+  locationHeader: {
+    flexDirection: 'row',
+    padding: SPACING.md,
+  },
+
+  locationIcon: {
+    fontSize: 32,
+    marginRight: SPACING.sm,
+  },
+
+  locationTextContainer: {
+    flex: 1,
+  },
+
+  locationTitle: {
+    fontSize: FONTS.sizes.sm,
+    color: COLORS.textSecondary,
+    marginBottom: SPACING.xs / 2,
+  },
+
+  locationAddress: {
+    fontSize: FONTS.sizes.base,
+    fontWeight: FONTS.weights.semiBold,
+    color: COLORS.text,
+    marginBottom: SPACING.xs / 2,
+  },
+
+  locationCity: {
+    fontSize: FONTS.sizes.sm,
+    color: COLORS.textSecondary,
+  },
+
+  locationFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: COLORS.primary + '10',
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+  },
+
+  locationAction: {
+    fontSize: FONTS.sizes.sm,
+    fontWeight: FONTS.weights.medium,
+    color: COLORS.primary,
+  },
+
+  locationArrow: {
+    fontSize: FONTS.sizes.xl,
+    color: COLORS.primary,
   },
 
   notesSection: {

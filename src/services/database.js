@@ -13,7 +13,10 @@ export const getGiftCards = async (filters = {}) => {
   try {
     let query = supabase
       .from('gift_cards')
-      .select('*')
+      .select(`
+        *,
+        store_location:store_locations(*)
+      `)
       .order('created_at', { ascending: false });
 
     // Apply filters
@@ -54,7 +57,10 @@ export const getGiftCard = async (cardId) => {
   try {
     const { data, error } = await supabase
       .from('gift_cards')
-      .select('*')
+      .select(`
+        *,
+        store_location:store_locations(*)
+      `)
       .eq('id', cardId)
       .single();
 
@@ -94,7 +100,10 @@ export const addGiftCard = async (cardData) => {
           ...cardData,
         },
       ])
-      .select()
+      .select(`
+        *,
+        store_location:store_locations(*)
+      `)
       .single();
 
     if (error) throw error;
@@ -118,7 +127,10 @@ export const updateGiftCard = async (cardId, updates) => {
       .from('gift_cards')
       .update(updates)
       .eq('id', cardId)
-      .select()
+      .select(`
+        *,
+        store_location:store_locations(*)
+      `)
       .single();
 
     if (error) throw error;
@@ -474,7 +486,10 @@ export const searchGiftCards = async (searchQuery) => {
 
     const { data, error } = await supabase
       .from('gift_cards')
-      .select('*')
+      .select(`
+        *,
+        store_location:store_locations(*)
+      `)
       .or(`store_name.ilike.%${query}%,card_number.ilike.%${query}%,notes.ilike.%${query}%`)
       .order('created_at', { ascending: false });
 
@@ -483,6 +498,134 @@ export const searchGiftCards = async (searchQuery) => {
     return { data, error: null };
   } catch (error) {
     console.error('Search gift cards error:', error);
+    return { data: null, error: error.message };
+  }
+};
+
+// ====================================
+// STORE LOCATIONS OPERATIONS
+// ====================================
+
+/**
+ * Search for store locations by name
+ * @param {string} storeName - Store name to search
+ * @returns {Promise<{data, error}>}
+ */
+export const searchStoreLocations = async (storeName) => {
+  try {
+    if (!storeName || storeName.trim().length < 2) {
+      return { data: [], error: null };
+    }
+
+    const { data, error } = await supabase
+      .from('store_locations')
+      .select('*')
+      .ilike('store_name', `%${storeName.trim()}%`)
+      .order('store_name', { ascending: true })
+      .limit(10);
+
+    if (error) throw error;
+
+    return { data, error: null };
+  } catch (error) {
+    console.error('Search store locations error:', error);
+    return { data: null, error: error.message };
+  }
+};
+
+/**
+ * Get a store location by ID
+ * @param {string} locationId - Store location ID
+ * @returns {Promise<{data, error}>}
+ */
+export const getStoreLocation = async (locationId) => {
+  try {
+    const { data, error } = await supabase
+      .from('store_locations')
+      .select('*')
+      .eq('id', locationId)
+      .single();
+
+    if (error) throw error;
+
+    return { data, error: null };
+  } catch (error) {
+    console.error('Get store location error:', error);
+    return { data: null, error: error.message };
+  }
+};
+
+/**
+ * Find nearby store locations
+ * @param {number} latitude - User's latitude
+ * @param {number} longitude - User's longitude
+ * @param {number} radiusKm - Search radius in kilometers (default: 5)
+ * @param {string} storeFilter - Optional store name filter
+ * @returns {Promise<{data, error}>}
+ */
+export const findNearbyLocations = async (
+  latitude,
+  longitude,
+  radiusKm = 5.0,
+  storeFilter = null
+) => {
+  try {
+    const { data, error } = await supabase.rpc('find_nearby_locations', {
+      user_lat: latitude,
+      user_lng: longitude,
+      radius_km: radiusKm,
+      store_filter: storeFilter,
+    });
+
+    if (error) throw error;
+
+    return { data, error: null };
+  } catch (error) {
+    console.error('Find nearby locations error:', error);
+    return { data: null, error: error.message };
+  }
+};
+
+/**
+ * Add a new store location
+ * @param {Object} locationData - Store location data
+ * @returns {Promise<{data, error}>}
+ */
+export const addStoreLocation = async (locationData) => {
+  try {
+    const { data, error } = await supabase
+      .from('store_locations')
+      .insert([locationData])
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    return { data, error: null };
+  } catch (error) {
+    console.error('Add store location error:', error);
+    return { data: null, error: error.message };
+  }
+};
+
+/**
+ * Get all locations for a specific store
+ * @param {string} storeName - Store name
+ * @returns {Promise<{data, error}>}
+ */
+export const getStoreLocationsByName = async (storeName) => {
+  try {
+    const { data, error } = await supabase
+      .from('store_locations')
+      .select('*')
+      .ilike('store_name', storeName)
+      .order('city', { ascending: true });
+
+    if (error) throw error;
+
+    return { data, error: null };
+  } catch (error) {
+    console.error('Get store locations by name error:', error);
     return { data: null, error: error.message };
   }
 };
@@ -515,4 +658,11 @@ export default {
   
   // Statistics
   getUserStatistics,
+  
+  // Store locations
+  searchStoreLocations,
+  getStoreLocation,
+  findNearbyLocations,
+  addStoreLocation,
+  getStoreLocationsByName,
 };

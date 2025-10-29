@@ -4,11 +4,14 @@ import {
   findNearbyCards,
   watchLocation,
   stopWatchingLocation,
+  registerGeofences,
+  stopGeofencing,
 } from '../services/location';
 import {
   checkLocationPermission,
   requestLocationPermission,
 } from '../utils/permissions';
+import { supabase } from '../services/supabase';
 
 /**
  * Custom hook for location functionality
@@ -20,6 +23,7 @@ export const useLocation = (autoFetch = false) => {
   const [permissionGranted, setPermissionGranted] = useState(false);
   const [watchingLocation, setWatchingLocation] = useState(false);
   const [locationSubscription, setLocationSubscription] = useState(null);
+  const [geofencingActive, setGeofencingActive] = useState(false);
 
   // Check permission on mount
   useEffect(() => {
@@ -124,6 +128,63 @@ export const useLocation = (autoFetch = false) => {
     }
   }, [locationSubscription]);
 
+  /**
+   * Initialize geofencing for user's gift cards
+   */
+  const initializeGeofencing = useCallback(async () => {
+    try {
+      setError(null);
+
+      // Get current user
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        return { success: false, error: 'Not authenticated' };
+      }
+
+      // Fetch user's gift cards
+      const { data: cards, error: cardsError } = await supabase
+        .from('gift_cards')
+        .select('*')
+        .eq('user_id', user.id);
+
+      if (cardsError) throw cardsError;
+
+      // Fetch user preferences
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('notification_radius_miles')
+        .eq('id', user.id)
+        .single();
+
+      // Register geofences
+      const result = await registerGeofences(cards || [], {
+        notification_radius_miles: profile?.notification_radius_miles || 1.0,
+      });
+
+      setGeofencingActive(result.success);
+      
+      if (!result.success && result.error) {
+        setError(result.error);
+      }
+
+      return result;
+    } catch (error) {
+      console.error('Initialize geofencing error:', error);
+      setError(error.message);
+      setGeofencingActive(false);
+      return { success: false, error: error.message };
+    }
+  }, []);
+
+  /**
+   * Stop all geofencing
+   */
+  const stopAllGeofencing = useCallback(async () => {
+    const result = await stopGeofencing();
+    setGeofencingActive(false);
+    return result;
+  }, []);
+
   return {
     // State
     location,
@@ -131,6 +192,7 @@ export const useLocation = (autoFetch = false) => {
     error,
     permissionGranted,
     watchingLocation,
+    geofencingActive,
 
     // Functions
     checkPermission,
@@ -139,6 +201,8 @@ export const useLocation = (autoFetch = false) => {
     findNearby,
     startWatching,
     stopWatching,
+    initializeGeofencing,
+    stopAllGeofencing,
   };
 };
 

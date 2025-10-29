@@ -1,7 +1,10 @@
 import * as Location from 'expo-location';
+import * as TaskManager from 'expo-task-manager';
 import { checkLocationPermission } from '../utils/permissions';
 import { getUserProfile } from './database';
+import { supabase } from './supabase';
 import { LOCATION } from '../utils/constants';
+import { GEOFENCE_TASK } from '../../App';
 
 // ====================================
 // LOCATION SERVICE
@@ -231,6 +234,195 @@ export const stopWatchingLocation = (subscription) => {
   }
 };
 
+// ====================================
+// GEOFENCING FUNCTIONS
+// ====================================
+
+/**
+ * Register geofences for gift cards
+ * @param {Array} giftCards - Array of gift cards with locations
+ * @param {Object} userPreferences - User notification preferences
+ * @returns {Promise<{success: boolean, count: number, error: string|null}>}
+ */
+export const registerGeofences = async (giftCards, userPreferences = {}) => {
+  try {
+    // Check permissions
+    const { granted } = await checkLocationPermission();
+    if (!granted) {
+      console.warn('⚠️  Location permissions not granted');
+      return { success: false, count: 0, error: 'Location permissions not granted' };
+    }
+
+    // Filter cards that should have geofences
+    const cardsWithLocations = giftCards.filter(card => 
+      card.location_notifications_enabled && 
+      !card.is_online_only &&
+      !card.is_used &&
+      card.store_latitude &&
+      card.store_longitude
+    );
+
+    if (cardsWithLocations.length === 0) {
+      console.log('ℹ️  No cards with locations to geofence');
+      return { success: true, count: 0, error: null };
+    }
+
+    // iOS has a limit of 20 geofences, Android has 100
+    const maxGeofences = LOCATION.maxGeofences || 20;
+    
+    // Prioritize cards by balance and expiration
+    const prioritizedCards = cardsWithLocations
+      .sort((a, b) => {
+        // Sort by balance (descending)
+        const balanceDiff = (b.balance || 0) - (a.balance || 0);
+        if (balanceDiff !== 0) return balanceDiff;
+        
+        // Then by expiration (ascending - soonest first)
+        if (a.expiration_date && b.expiration_date) {
+          return new Date(a.expiration_date) - new Date(b.expiration_date);
+        }
+        return 0;
+      })
+      .slice(0, maxGeofences);
+
+    // Get radius from user preferences or use default
+    const radiusMeters = userPreferences.notification_radius_miles 
+      ? userPreferences.notification_radius_miles * 1609 
+      : LOCATION.geofenceRadiusMeters;
+    
+    // Convert to geofence regions
+    const regions = prioritizedCards.map(card => ({
+      identifier: card.id,
+      latitude: card.store_latitude,
+      longitude: card.store_longitude,
+      radius: radiusMeters,
+      notifyOnEnter: true,
+      notifyOnExit: false,
+    }));
+
+    // Stop any existing geofencing
+    const isTaskDefined = await TaskManager.isTaskDefined(GEOFENCE_TASK);
+    if (isTaskDefined) {
+      await Location.stopGeofencingAsync(GEOFENCE_TASK);
+    }
+
+    // Register new geofences
+    if (regions.length > 0) {
+      await Location.startGeofencingAsync(GEOFENCE_TASK, regions);
+      console.log(`✅ Registered ${regions.length} geofences`);
+    }
+
+    return { success: true, count: regions.length, error: null };
+  } catch (error) {
+    console.error('Register geofences error:', error);
+    return { success: false, count: 0, error: error.message };
+  }
+};
+
+/**
+ * Stop all geofencing
+ * @returns {Promise<{success: boolean, error: string|null}>}
+ */
+export const stopGeofencing = async () => {
+  try {
+    const isTaskDefined = await TaskManager.isTaskDefined(GEOFENCE_TASK);
+    if (isTaskDefined) {
+      await Location.stopGeofencingAsync(GEOFENCE_TASK);
+      console.log('✅ Stopped geofencing');
+    }
+    return { success: true, error: null };
+  } catch (error) {
+    console.error('Stop geofencing error:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+/**
+ * Check if notification should be sent (debouncing logic)
+ * @param {string} cardId - Gift card ID
+ * @param {string} userId - User ID
+ * @returns {Promise<boolean>}
+ */
+export const checkNotificationEligibility = async (cardId, userId) => {
+  try {
+    // Get card details
+    const { data: card } = await supabase
+      .from('gift_cards')
+      .select('location_notifications_enabled')
+      .eq('id', cardId)
+      .single();
+
+    if (!card || !card.location_notifications_enabled) {
+      return false;
+    }
+
+    // Get user preferences
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('quiet_hours_enabled, quiet_hours_start, quiet_hours_end')
+      .eq('id', userId)
+      .single();
+
+    // Check quiet hours
+    if (profile?.quiet_hours_enabled) {
+      const currentHour = new Date().getHours();
+      const start = profile.quiet_hours_start || 22;
+      const end = profile.quiet_hours_end || 7;
+      
+      if (start > end) {
+        // Quiet hours cross midnight (e.g., 10pm - 7am)
+        if (currentHour >= start || currentHour < end) {
+          console.log('⏭️  Skipping: Quiet hours');
+          return false;
+        }
+      } else {
+        // Quiet hours same day
+        if (currentHour >= start && currentHour < end) {
+          console.log('⏭️  Skipping: Quiet hours');
+          return false;
+        }
+      }
+    }
+
+    // Check 24-hour debounce
+    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    const { data: recentNotifs } = await supabase
+      .from('notifications')
+      .select('id')
+      .eq('gift_card_id', cardId)
+      .eq('type', 'location')
+      .gte('sent_at', twentyFourHoursAgo);
+
+    if (recentNotifs && recentNotifs.length > 0) {
+      console.log('⏭️  Skipping: Recently notified (24h)');
+      return false;
+    }
+
+    // Check dismissal pattern (last 3 dismissed = weekly limit)
+    const { data: lastThree } = await supabase
+      .from('notifications')
+      .select('was_dismissed, sent_at')
+      .eq('gift_card_id', cardId)
+      .eq('type', 'location')
+      .order('sent_at', { ascending: false })
+      .limit(3);
+
+    if (lastThree && lastThree.length === 3 && lastThree.every(n => n.was_dismissed)) {
+      const lastNotif = new Date(lastThree[0].sent_at);
+      const hoursSince = (Date.now() - lastNotif) / (1000 * 60 * 60);
+      if (hoursSince < 168) { // 7 days
+        console.log('⏭️  Skipping: User repeatedly dismissed');
+        return false;
+      }
+    }
+
+    return true;
+  } catch (error) {
+    console.error('Check eligibility error:', error);
+    return false;
+  }
+};
+
 export default {
   getCurrentLocation,
   calculateDistance,
@@ -240,4 +432,8 @@ export default {
   watchLocation,
   stopWatchingLocation,
   areLocationNotificationsEnabled,
+  registerGeofences,
+  stopGeofencing,
+  checkNotificationEligibility,
+  GEOFENCE_TASK,
 };

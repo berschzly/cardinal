@@ -250,18 +250,11 @@ export const GIFT_CARD = {
 // LOCATION SETTINGS
 // ====================================
 export const LOCATION = {
-  // Geofencing radius
-  geofenceRadiusMeters: 804.672, // 0.5 miles
-  
-  // Location accuracy
-  desiredAccuracy: 100, // meters
-  distanceFilter: 50, // meters (minimum distance before update)
-  
-  // Background location update frequency
-  backgroundUpdateInterval: 300000, // 5 minutes in milliseconds
-  
-  // Location timeout
   timeout: 10000, // 10 seconds
+  backgroundUpdateInterval: 300000, // 5 minutes
+  distanceFilter: 100, // 100 meters
+  geofenceRadiusMeters: 1609, // 1 mile default
+  maxGeofences: 20, // iOS limit
 };
 
 // ====================================

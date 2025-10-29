@@ -20,6 +20,7 @@ import Loading from '../../components/common/Loading';
 import ErrorMessage from '../../components/common/ErrorMessage';
 import { COLORS, FONTS, SPACING, SUBSCRIPTION } from '../../utils/constants';
 import { isCardExpiringSoon, isCardExpired, daysUntilExpiration } from '../../utils/helpers';
+import { useLocation } from '../../hooks/useLocation';
 
 const { width } = Dimensions.get('window');
 const isSmallDevice = width < 375;
@@ -107,6 +108,14 @@ const DashboardScreen = ({ navigation }) => {
     fetchCards,
     refresh,
   } = useGiftCards(true);
+
+  const { initializeGeofencing, geofencingActive } = useLocation();
+
+  useEffect(() => {
+    if (cards && cards.length > 0) {
+      initializeGeofencing();
+    }
+  }, [cards?.length]);
 
   const [refreshing, setRefreshing] = useState(false);
 
@@ -621,6 +630,18 @@ const styles = StyleSheet.create({
   usedSubtext: {
     fontSize: FONTS.sizes.sm,
     color: COLORS.textSecondary,
+  },
+  geofenceBadge: {
+    backgroundColor: COLORS.success + '20',
+    padding: 8,
+    borderRadius: 8,
+    marginBottom: 12,
+    alignItems: 'center',
+  },
+  geofenceText: {
+    color: COLORS.success,
+    fontSize: 12,
+    fontWeight: '600',
   },
 });
 

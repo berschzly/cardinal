@@ -15,7 +15,13 @@ export default {
     },
     ios: {
       supportsTablet: true,
-      bundleIdentifier: "com.cardinal.app"
+      bundleIdentifier: "com.cardinal.app",
+      infoPlist: {
+        UIBackgroundModes: ["location", "fetch", "remote-notification"],
+        NSLocationAlwaysAndWhenInUseUsageDescription: "Cardinal needs location access to remind you when you're near stores with gift cards.",
+        NSLocationWhenInUseUsageDescription: "Cardinal needs location access to remind you when you're near stores with gift cards.",
+        NSLocationAlwaysUsageDescription: "Cardinal needs background location access to send you timely reminders when you're near stores with gift cards, even when the app is closed."
+      }
     },
     android: {
       package: "com.cardinal.app",
@@ -23,7 +29,13 @@ export default {
         foregroundImage: "./src/assets/icons/icon.png",
         backgroundColor: "#6366F1"
       },
-      edgeToEdgeEnabled: true
+      edgeToEdgeEnabled: true,
+      permissions: [
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_BACKGROUND_LOCATION",
+        "POST_NOTIFICATIONS"
+      ]
     },
     web: {
       favicon: "./src/assets/icons/icon.png"
@@ -32,12 +44,28 @@ export default {
       [
         "react-native-google-mobile-ads",
         {
-          // Replace these with your actual AdMob App IDs from Google AdMob Console
-          // Get these from: https://apps.admob.com/
           androidAppId: "ca-app-pub-3940256099942544~3347511713", // Test ID
           iosAppId: "ca-app-pub-3940256099942544~1458002511", // Test ID
-          // Ensure the plugin is properly configured
           skipAutoInit: false
+        }
+      ],
+      [
+        "expo-location",
+        {
+          locationAlwaysAndWhenInUsePermission: "Cardinal needs location access to remind you when you're near stores with gift cards.",
+          locationAlwaysPermission: "Cardinal needs background location access to send you timely reminders when you're near stores with gift cards, even when the app is closed.",
+          locationWhenInUsePermission: "Cardinal needs location access to remind you when you're near stores with gift cards.",
+          isIosBackgroundLocationEnabled: true,
+          isAndroidBackgroundLocationEnabled: true
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          icon: "./src/assets/icons/notification-icon.png",
+          color: "#C41E3A",
+          sounds: [],
+          mode: "production"
         }
       ]
     ],
@@ -49,8 +77,8 @@ export default {
       supabaseAnonKey: process.env.SUPABASE_ANON_KEY,
       googleVisionApiKey: process.env.GOOGLE_VISION_API_KEY,
       googlePlacesApiKey: process.env.GOOGLE_PLACES_API_KEY,
-      admobIosBannerId: process.env.ADMOB_IOS_BANNER_ID || "ca-app-pub-3940256099942544/2934735716", // Test Banner ID
-      admobAndroidBannerId: process.env.ADMOB_ANDROID_BANNER_ID || "ca-app-pub-3940256099942544/6300978111", // Test Banner ID
+      admobIosBannerId: process.env.ADMOB_IOS_BANNER_ID || "ca-app-pub-3940256099942544/2934735716",
+      admobAndroidBannerId: process.env.ADMOB_ANDROID_BANNER_ID || "ca-app-pub-3940256099942544/6300978111",
       iosPremiumProductId: process.env.IOS_PREMIUM_PRODUCT_ID,
       androidPremiumProductId: process.env.ANDROID_PREMIUM_PRODUCT_ID,
       maxFreeCards: process.env.MAX_FREE_CARDS || 15,

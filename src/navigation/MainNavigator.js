@@ -5,6 +5,7 @@ import { Text, Platform, StyleSheet, View } from 'react-native';
 import DashboardScreen from '../screens/main/DashboardScreen';
 import CardDetailsScreen from '../screens/main/CardDetailsScreen';
 import AddCardScreen from '../screens/main/AddCardScreen';
+import NotificationsScreen from '../screens/main/NotificationsScreen';
 import SettingsScreen from '../screens/main/SettingsScreen';
 import ProfileScreen from '../screens/main/ProfileScreen';
 import SubscriptionScreen from '../screens/main/SubscriptionScreen';
@@ -74,7 +75,7 @@ const SettingsStack = () => {
 };
 
 /**
- * Main Navigator with Settings Tab
+ * Main Navigator with Notifications Tab
  */
 const MainNavigator = () => {
   return (
@@ -119,6 +120,16 @@ const MainNavigator = () => {
         options={{
           tabBarIcon: ({ focused }) => (
             <TabBarIcon focused={focused} icon="➕" label="Add Card" />
+          ),
+        }}
+      />
+
+      <Tab.Screen
+        name="Notifications"
+        component={NotificationsScreen}
+        options={{
+          tabBarIcon: ({ focused }) => (
+            <TabBarIcon focused={focused} icon="🔔" label="Alerts" />
           ),
         }}
       />

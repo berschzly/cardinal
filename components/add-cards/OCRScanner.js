@@ -13,7 +13,7 @@ import { parseGiftCardText } from '../../lib/ocr';
 import Constants from 'expo-constants';
 
 const GOOGLE_CLOUD_VISION_API_KEY = 
-  Constants.expoConfig?.extra?.googleVisionApiKey || 'AIzaSyCjovzavqrjYZgvCwKxKqwSKCLtkEgK5Lo';
+  Constants.expoConfig?.extra?.googleVisionApiKey;
 
 export default function OCRScanner({ onScanComplete, onClose }) {
   const [hasPermission, setHasPermission] = useState(null);

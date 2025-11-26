@@ -1,6 +1,6 @@
 // Home/Dashboard (card list)
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -10,6 +10,7 @@ import {
   TouchableOpacity,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
 import { getCards } from '../../lib/supabase';
 import CardItem from '../../components/cards/CardItem';
 import Colors from '../../constants/Colors';
@@ -26,13 +27,18 @@ export default function Dashboard() {
       console.error('Error loading cards:', error);
     } else {
       setCards(data || []);
+      console.log('Loaded cards:', data?.length || 0); // Debug log
     }
     setLoading(false);
   }
 
-  useEffect(() => {
-    loadCards();
-  }, []);
+  // Use useFocusEffect instead of useEffect
+  useFocusEffect(
+    useCallback(() => {
+      console.log('Dashboard focused, loading cards...'); // Debug log
+      loadCards();
+    }, [])
+  );
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -49,7 +55,7 @@ export default function Dashboard() {
       </Text>
       <TouchableOpacity
         style={styles.addButton}
-        onPress={() => router.push('/add-card')}
+        onPress={() => router.push('/(tabs)/add-card')}
       >
         <Text style={styles.addButtonText}>Add Your First Card</Text>
       </TouchableOpacity>
@@ -72,7 +78,10 @@ export default function Dashboard() {
         data={cards}
         renderItem={({ item }) => <CardItem card={item} />}
         keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.listContent}
+        contentContainerStyle={[
+          styles.listContent,
+          cards.length === 0 && styles.emptyListContent,
+        ]}
         ListEmptyComponent={renderEmptyState}
         refreshControl={
           <RefreshControl
@@ -95,6 +104,9 @@ const styles = StyleSheet.create({
   listContent: {
     padding: 20,
     paddingBottom: 40,
+  },
+  emptyListContent: {
+    flexGrow: 1,
   },
   loadingContainer: {
     flex: 1,

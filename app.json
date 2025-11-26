@@ -4,6 +4,7 @@
   "expo": {
     "name": "cardinal",
     "slug": "cardinal",
+    "scheme": "cardinal",
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "light",

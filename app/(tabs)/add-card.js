@@ -16,7 +16,11 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import { Picker } from '@react-native-picker/picker';
 import { createCard } from '../../lib/supabase';
 import { validateCardData, sanitizeCardData } from '../../utils/validation';
+import { scheduleExpirationReminder, scheduleUsageReminder } from '../../lib/notifications';
 import Colors from '../../constants/Colors';
+import { Modal } from 'react-native';
+import OCRScanner from '../../components/add-cards/OCRScanner';
+import { parseGiftCardText } from '../../lib/ocr';
 
 export default function AddCard() {
   const router = useRouter();
@@ -33,6 +37,7 @@ export default function AddCard() {
   const [barcodeValue, setBarcodeValue] = useState('');
   const [expirationDate, setExpirationDate] = useState(null);
   const [showDatePicker, setShowDatePicker] = useState(false);
+  const [showScanner, setShowScanner] = useState(false);
 
   async function handleSaveCard() {
     // Build card data object
@@ -60,33 +65,78 @@ export default function AddCard() {
     setLoading(true);
     const cleanData = sanitizeCardData(cardData);
     const { data, error } = await createCard(cleanData);
-    setLoading(false);
-
+    
     if (error) {
+      setLoading(false);
       Alert.alert('Error', 'Failed to save card. Please try again.');
       console.error(error);
-    } else {
-      Alert.alert('Success!', 'Card added successfully', [
-        {
-          text: 'OK',
-          onPress: () => {
-            // Clear form
-            setName('');
-            setBrand('');
-            setBalance('');
-            setCardNumber('');
-            setPin('');
-            setNotes('');
-            setBarcodeType('');
-            setBarcodeValue('');
-            setExpirationDate(null);
-            
-            // Go back to list
-            router.push('/(tabs)');
-          },
-        },
-      ]);
+      return;
     }
+
+    // 🎯 Schedule notifications for the new card
+    try {
+      // Make sure we have the card ID
+      if (!data?.id) {
+        console.error('⚠️ No card ID returned from database');
+      } else {
+        const cardForNotification = {
+          id: data.id,
+          brand: data.brand || name,
+          balance: parseFloat(data.balance) || 0,
+          expirationDate: data.expiration_date,
+        };
+
+        console.log('📅 Scheduling notifications for:', cardForNotification);
+
+        if (data.expiration_date) {
+          // Schedule expiration reminders (30, 7, 1 days before)
+          const notificationIds = await scheduleExpirationReminder(cardForNotification);
+          console.log('✅ Expiration reminders scheduled for card:', data.id, notificationIds);
+        } else {
+          // If no expiration, schedule a usage reminder (30 days from now)
+          const notificationId = await scheduleUsageReminder(cardForNotification, 30);
+          console.log('✅ Usage reminder scheduled for card:', data.id, notificationId);
+        }
+      }
+    } catch (notificationError) {
+      // Don't block the flow if notifications fail
+      console.error('⚠️ Failed to schedule notifications:', notificationError);
+    }
+
+    setLoading(false);
+
+    // Clear form
+    setName('');
+    setBrand('');
+    setBalance('');
+    setCardNumber('');
+    setPin('');
+    setNotes('');
+    setBarcodeType('');
+    setBarcodeValue('');
+    setExpirationDate(null);
+    
+    Alert.alert('Success!', 'Card added successfully with reminders', [
+      {
+        text: 'OK',
+        onPress: () => router.push('/(tabs)'), // Navigate to cards tab
+      },
+    ]);
+  }
+
+  function handleScanComplete(ocrData) {
+    setShowScanner(false);
+      
+    // Pre-fill form with OCR data
+    if (ocrData.brand) setBrand(ocrData.brand);
+    if (ocrData.cardNumber) setCardNumber(ocrData.cardNumber);
+    if (ocrData.balance) setBalance(ocrData.balance.toString());
+    if (ocrData.pin) setPin(ocrData.pin);
+    if (ocrData.expirationDate) {
+      setExpirationDate(new Date(ocrData.expirationDate));
+    }
+      
+    Alert.alert('Scan Complete', 'Review and edit the card details below');
   }
 
   return (
@@ -97,6 +147,12 @@ export default function AddCard() {
         keyboardShouldPersistTaps="handled"
       >
         <Text style={styles.title}>Add New Card</Text>
+        <TouchableOpacity
+          style={styles.scanButton}
+          onPress={() => setShowScanner(true)}
+        >
+          <Text style={styles.scanButtonText}>📷 Scan Card with Camera</Text>
+        </TouchableOpacity>
 
         {/* Required: Card Name */}
         <View style={styles.fieldContainer}>
@@ -178,6 +234,9 @@ export default function AddCard() {
                 : 'Select Date'}
             </Text>
           </TouchableOpacity>
+          <Text style={styles.helperText}>
+            💡 You'll get reminders 30, 7, and 1 day before expiration
+          </Text>
         </View>
 
         {showDatePicker && (
@@ -255,6 +314,16 @@ export default function AddCard() {
 
         <View style={styles.bottomSpacer} />
       </ScrollView>
+      <Modal
+        visible={showScanner}
+        animationType="slide"
+        presentationStyle="fullScreen"
+      >
+        <OCRScanner
+          onScanComplete={handleScanComplete}
+          onClose={() => setShowScanner(false)}
+        />
+      </Modal>
     </View>
   );
 }
@@ -312,6 +381,12 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: Colors.text,
   },
+  helperText: {
+    fontSize: 12,
+    color: Colors.textSecondary,
+    marginTop: 6,
+    fontStyle: 'italic',
+  },
   pickerContainer: {
     backgroundColor: Colors.surface,
     borderRadius: 12,
@@ -340,5 +415,20 @@ const styles = StyleSheet.create({
   },
   bottomSpacer: {
     height: 40,
+  },
+  scanButton: {
+    backgroundColor: Colors.surface,
+    borderRadius: 12,
+    padding: 16,
+    alignItems: 'center',
+    marginBottom: 24,
+    borderWidth: 2,
+    borderColor: Colors.primary,
+    borderStyle: 'dashed',
+  },
+  scanButtonText: {
+    color: Colors.primary,
+    fontSize: 16,
+    fontWeight: '600',
   },
 });

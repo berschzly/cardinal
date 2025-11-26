@@ -1,5 +1,3 @@
-// Tab navigation layout
-
 import { Tabs } from 'expo-router';
 import Colors from '../../constants/Colors';
 

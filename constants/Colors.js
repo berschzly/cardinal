@@ -1,6 +1,6 @@
 // Theme colors (fintech style)
 
-javascript// constants/Colors.js
+// constants/Colors.js
 
 /**
  * Color palette for Cardinal - Red themed fintech design

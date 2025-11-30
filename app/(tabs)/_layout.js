@@ -1,45 +1,71 @@
-// Tab navigation layout
+// Tab navigation layout - Cash App inspired
 
 import { Tabs } from 'expo-router';
-import Colors from '../../constants/Colors';
+import { Platform, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 
 export default function TabLayout() {
+  const insets = useSafeAreaInsets();
+  
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: Colors.primary,
-        tabBarInactiveTintColor: Colors.textSecondary,
+        headerShown: false,
+        tabBarActiveTintColor: '#DC2626',
+        tabBarInactiveTintColor: '#6B7280',
+        tabBarShowLabel: false,
         tabBarStyle: {
-          backgroundColor: Colors.background,
-          borderTopColor: Colors.border,
-          borderTopWidth: 1,
+          backgroundColor: '#0A0A0A',
+          borderTopWidth: 0,
+          paddingTop: 8,
+          paddingBottom: Math.max(insets.bottom, 8),
+          height: Math.max(insets.bottom + 60, 68),
+          elevation: 0,
+          shadowOpacity: 0,
         },
-        headerStyle: {
-          backgroundColor: Colors.background,
+        tabBarItemStyle: {
+          paddingVertical: 0,
         },
-        headerTintColor: Colors.text,
-        headerShadowVisible: false,
       }}
     >
       <Tabs.Screen
         name="index"
         options={{
-          title: 'Cards',
-          tabBarLabel: 'Cards',
+          tabBarIcon: ({ color, focused }) => (
+            <Ionicons 
+              name={focused ? "wallet" : "wallet-outline"} 
+              size={26} 
+              color={color} 
+            />
+          ),
+          tabBarAccessibilityLabel: 'Cards',
         }}
       />
       <Tabs.Screen
         name="add-card"
         options={{
-          title: 'Add Card',
-          tabBarLabel: 'Add',
+          tabBarIcon: ({ color, focused }) => (
+            <Ionicons 
+              name={focused ? "add-circle" : "add-circle-outline"} 
+              size={26} 
+              color={color} 
+            />
+          ),
+          tabBarAccessibilityLabel: 'Add card',
         }}
       />
       <Tabs.Screen
         name="settings"
         options={{
-          title: 'Settings',
-          tabBarLabel: 'Settings',
+          tabBarIcon: ({ color, focused }) => (
+            <Ionicons 
+              name={focused ? "settings" : "settings-outline"} 
+              size={26} 
+              color={color} 
+            />
+          ),
+          tabBarAccessibilityLabel: 'Settings',
         }}
       />
     </Tabs>

@@ -1,5 +1,3 @@
-// Registration screen - Coinbase inspired design
-
 import { useState } from 'react';
 import {
   View,
@@ -14,54 +12,37 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { signUp } from '../../lib/supabase';
+import { supabase } from '../../lib/supabase';
 
-export default function SignUp() {
+export default function ForgotPassword() {
   const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const router = useRouter();
 
-  function validateForm() {
-    if (!email || !password || !confirmPassword) {
-      Alert.alert('Error', 'Please fill in all fields');
-      return false;
-    }
-
-    if (password.length < 6) {
-      Alert.alert('Error', 'Password must be at least 6 characters');
-      return false;
-    }
-
-    if (password !== confirmPassword) {
-      Alert.alert('Error', 'Passwords do not match');
-      return false;
+  async function handleResetPassword() {
+    if (!email) {
+      Alert.alert('Error', 'Please enter your email address');
+      return;
     }
 
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
       Alert.alert('Error', 'Please enter a valid email address');
-      return false;
+      return;
     }
 
-    return true;
-  }
-
-  async function handleSignUp() {
-    if (!validateForm()) return;
-
     setLoading(true);
-    
-    const { data, error: signUpError } = await signUp(email, password);
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: 'cardinal://reset-password',
+    });
     setLoading(false);
 
-    if (signUpError) {
-      Alert.alert('Error', signUpError.message || 'Failed to create account');
+    if (error) {
+      Alert.alert('Error', error.message);
     } else {
       Alert.alert(
-        'Success! 🎉',
-        'Check your email to verify your account, then sign in.',
+        'Check Your Email 📧',
+        'We sent you a password reset link. Check your email and click the link to reset your password.',
         [{ text: 'OK', onPress: () => router.replace('/(auth)/sign-in') }]
       );
     }
@@ -88,7 +69,7 @@ export default function SignUp() {
             </View>
             <TouchableOpacity 
               style={styles.closeButton}
-              onPress={() => router.push('/(auth)/welcome')}
+              onPress={() => router.push('/(auth)/sign-in')}
             >
               <Text style={styles.closeIcon}>✕</Text>
             </TouchableOpacity>
@@ -96,9 +77,9 @@ export default function SignUp() {
 
           {/* Title Section */}
           <View style={styles.titleSection}>
-            <Text style={styles.title}>Create your account</Text>
+            <Text style={styles.title}>Reset password</Text>
             <Text style={styles.subtitle}>
-              Store and manage all your gift cards in one secure place
+              Enter your email and we'll send you a link to reset your password
             </Text>
           </View>
 
@@ -117,49 +98,23 @@ export default function SignUp() {
                 autoComplete="email"
               />
             </View>
-
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Password</Text>
-              <TextInput
-                style={styles.input}
-                value={password}
-                onChangeText={setPassword}
-                placeholder="At least 6 characters"
-                placeholderTextColor="#9CA3AF"
-                secureTextEntry
-                autoCapitalize="none"
-              />
-            </View>
-
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Confirm Password</Text>
-              <TextInput
-                style={styles.input}
-                value={confirmPassword}
-                onChangeText={setConfirmPassword}
-                placeholder="Re-enter your password"
-                placeholderTextColor="#9CA3AF"
-                secureTextEntry
-                autoCapitalize="none"
-              />
-            </View>
           </View>
 
-          {/* Continue Button */}
+          {/* Reset Button */}
           <TouchableOpacity 
-            style={[styles.continueButton, loading && styles.continueButtonDisabled]}
-            onPress={handleSignUp}
+            style={[styles.resetButton, loading && styles.resetButtonDisabled]}
+            onPress={handleResetPassword}
             disabled={loading}
             activeOpacity={0.8}
           >
-            <Text style={styles.continueButtonText}>
-              {loading ? 'Creating Account...' : 'Continue'}
+            <Text style={styles.resetButtonText}>
+              {loading ? 'Sending...' : 'Send Reset Link'}
             </Text>
           </TouchableOpacity>
 
-          {/* Sign In Link */}
+          {/* Back to Sign In Link */}
           <View style={styles.footer}>
-            <Text style={styles.footerText}>Already have an account? </Text>
+            <Text style={styles.footerText}>Remember your password? </Text>
             <TouchableOpacity onPress={() => router.push('/(auth)/sign-in')}>
               <Text style={styles.footerLink}>Sign in</Text>
             </TouchableOpacity>
@@ -264,8 +219,8 @@ const styles = StyleSheet.create({
     fontWeight: '400',
   },
 
-  // Continue Button
-  continueButton: {
+  // Reset Button
+  resetButton: {
     height: 56,
     backgroundColor: '#DC2626',
     borderRadius: 28,
@@ -273,10 +228,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: 24,
   },
-  continueButtonDisabled: {
+  resetButtonDisabled: {
     opacity: 0.6,
   },
-  continueButtonText: {
+  resetButtonText: {
     fontSize: 17,
     fontWeight: '600',
     color: '#FFFFFF',

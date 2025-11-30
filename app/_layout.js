@@ -1,12 +1,13 @@
-// Root layout
-
-import { Stack, useRouter } from 'expo-router';
+import { Stack, useRouter, useSegments } from 'expo-router';
 import { useEffect, useState, useRef } from 'react';
 import * as Notifications from 'expo-notifications';
+import { View, ActivityIndicator, StyleSheet } from 'react-native';
 import { supabase } from '../lib/supabase';
 import { requestNotificationPermissions } from '../lib/notifications';
 
-// Configure notification handler globally
+/** --------------------------
+ * Configure notifications globally
+ * -------------------------- */
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowAlert: true,
@@ -17,71 +18,158 @@ Notifications.setNotificationHandler({
 
 export default function RootLayout() {
   const [session, setSession] = useState(null);
+  const [loading, setLoading] = useState(true);
+
   const router = useRouter();
-  const notificationListener = useRef();
-  const responseListener = useRef();
+  const segments = useSegments();
 
+  const notifListener = useRef(null);
+  const tapListener = useRef(null);
+
+  /** --------------------------
+   * 1) Load initial Supabase session & listen for auth changes
+   * -------------------------- */
   useEffect(() => {
-    // Setup Supabase auth
+    let mounted = true;
+
+    // Get initial session
     supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!mounted) return;
       setSession(session);
+      setLoading(false);
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-    });
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (_event, newSession) => {
+        setSession(newSession);
+      }
+    );
 
-    return () => subscription.unsubscribe();
+    return () => {
+      mounted = false;
+      subscription?.unsubscribe();
+    };
   }, []);
 
+  /** --------------------------
+   * 2) Navigation gate: redirect based on session
+   * -------------------------- */
   useEffect(() => {
-    // Request notification permissions when user is logged in
-    if (session) {
-      requestNotificationPermissions();
+    if (loading) return;
+    if (!segments || segments.length === 0) return;
+
+    const AUTH_SCREENS = ['welcome', 'sign-in', 'sign-up', 'forgot-password'];
+    const group = segments[0];    // e.g. "(auth)" or "(tabs)"
+    const screen = segments[1];   // e.g. "welcome" or "sign-in"
+
+    const inAuthGroup = group === '(auth)';
+    const onAuthScreen = AUTH_SCREENS.includes(screen);
+
+    // Debugging logs (optional, remove in production)
+    console.log('Navigation - group:', group, 'screen:', screen, 'session:', !!session);
+
+    // Not logged in → redirect to welcome screen
+    if (!session && !inAuthGroup) {
+      console.log('No session, redirecting to welcome');
+      router.replace('/(auth)/welcome');
+      return;
     }
 
-    // Setup notification listeners (may not work fully in Expo Go)
-    try {
-      // Listen for notifications received while app is open
-      notificationListener.current = Notifications.addNotificationReceivedListener(notification => {
-        console.log('📬 Notification received:', notification);
-      });
+    // Logged in but on sign-in/sign-up → redirect to dashboard
+    if (session && inAuthGroup && (screen === 'sign-in' || screen === 'sign-up')) {
+      console.log('Session exists, redirecting to dashboard');
+      router.replace('/(tabs)');
+      return;
+    }
 
-      // Listen for user tapping on notifications
-      responseListener.current = Notifications.addNotificationResponseReceivedListener(response => {
-        console.log('👆 Notification tapped:', response);
-        
+    // Logged in but on welcome screen → redirect to dashboard
+    if (session && inAuthGroup && screen === 'welcome') {
+      console.log('Session exists, redirecting to dashboard');
+      router.replace('/(tabs)');
+    }
+  }, [session, loading, segments]);
+
+  /** --------------------------
+   * 3) Notification listeners
+   * Only setup once the user is logged in
+   * -------------------------- */
+  useEffect(() => {
+    if (!session) return;
+
+    // Request permissions for notifications
+    requestNotificationPermissions();
+
+    // Listener for notifications received while app is foregrounded
+    notifListener.current = Notifications.addNotificationReceivedListener(
+      (notification) => console.log('📬 Notification received:', notification)
+    );
+
+    // Listener for user tapping on a notification
+    tapListener.current = Notifications.addNotificationResponseReceivedListener(
+      (response) => {
         const cardId = response.notification.request.content.data?.cardId;
-        if (cardId) {
-          // Navigate to card detail screen (adjust route as needed)
-          router.push(`/cards/${cardId}`);
+        if (cardId && cardId !== 'test-123') {
+          router.push(`/card/${cardId}`);
         }
-      });
-    } catch (error) {
-      // Expected in Expo Go - notifications still work, just limited features
-      console.log('Notification listeners limited in Expo Go');
-    }
-
-    // Cleanup listeners on unmount
-    return () => {
-      try {
-        if (notificationListener.current) {
-          notificationListener.current.remove();
-        }
-        if (responseListener.current) {
-          responseListener.current.remove();
-        }
-      } catch (error) {
-        // Ignore cleanup errors in Expo Go
-        console.log('Notification cleanup (expected in Expo Go)');
       }
+    );
+
+    // Cleanup listeners
+    return () => {
+      notifListener.current?.remove?.();
+      tapListener.current?.remove?.();
     };
   }, [session]);
 
+  /** --------------------------
+   * 4) Loading screen while session is being checked
+   * -------------------------- */
+  if (loading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <View style={styles.logo}>
+          <ActivityIndicator size="large" color="#DC2626" />
+        </View>
+      </View>
+    );
+  }
+
+  /** --------------------------
+   * 5) Stack navigation
+   * -------------------------- */
   return (
-    <Stack screenOptions={{ headerShown: false }}>
+    <Stack
+      screenOptions={{
+        headerShown: false,
+        contentStyle: { backgroundColor: '#141414' },
+        cardStyle: { backgroundColor: '#141414' },
+        animation: 'fade',
+      }}
+    >
       <Stack.Screen name="(auth)" />
       <Stack.Screen name="(tabs)" />
+      <Stack.Screen name="card/[id]" />
+      <Stack.Screen name="card/edit/[id]" />
     </Stack>
   );
 }
+
+const styles = StyleSheet.create({
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#141414',
+  },
+  logo: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: '#1F1F1F',
+    borderWidth: 2,
+    borderColor: '#DC2626',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+});

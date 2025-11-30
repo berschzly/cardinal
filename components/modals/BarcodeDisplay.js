@@ -4,7 +4,8 @@ import QRCode from 'react-native-qrcode-svg';
 import Colors from '../../constants/Colors';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
-const MAX_BARCODE_WIDTH = SCREEN_WIDTH - 48; // Reduced padding for more space
+const PADDING = 43;
+const MAX_BARCODE_WIDTH = SCREEN_WIDTH - (PADDING * 2); // 43 padding on each side
 
 export default function BarcodeDisplay({ card }) {
   // Use card_number for barcode generation
@@ -15,16 +16,26 @@ export default function BarcodeDisplay({ card }) {
   // Auto-detect barcode type based on card number
   const barcodeType = detectBarcodeType(value);
 
+  // Calculate dynamic font size based on barcode width and value length
+  const calculateFontSize = () => {
+    const availableWidth = MAX_BARCODE_WIDTH - 32; // Account for container padding
+    const charCount = value.length;
+    const baseSize = availableWidth / (charCount * 0.6); // 0.6 is approximate char width ratio
+    return Math.min(Math.max(baseSize, 10), 16); // Clamp between 10 and 16
+  };
+
+  const dynamicFontSize = calculateFontSize();
+
   // QR Code
   if (barcodeType === 'qr') {
-    const qrSize = Math.min(240, MAX_BARCODE_WIDTH - 24);
+    const qrSize = Math.min(260, MAX_BARCODE_WIDTH - 32);
     
     return (
       <View style={styles.container}>
         <View style={styles.qrContainer}>
           <QRCode value={value} size={qrSize} backgroundColor="white" />
         </View>
-        <Text style={styles.value}>{value}</Text>
+        <Text style={[styles.value, { fontSize: dynamicFontSize }]}>{value}</Text>
       </View>
     );
   }
@@ -36,10 +47,10 @@ export default function BarcodeDisplay({ card }) {
     upca: 'UPC',
   }[barcodeType] || 'CODE128';
 
-  // Calculate bar width to fit screen - aim for larger bars
-  const estimatedBars = value.length * 11; // Rough estimate
-  const maxBarWidth = MAX_BARCODE_WIDTH / estimatedBars;
-  const barWidth = Math.min(2.5, Math.max(1.5, maxBarWidth));
+  // Calculate bar width to fit screen
+  const estimatedBars = value.length * 11;
+  const maxBarWidth = (MAX_BARCODE_WIDTH - 32) / estimatedBars;
+  const barWidth = Math.min(2.8, Math.max(1.7, maxBarWidth));
 
   return (
     <View style={styles.container}>
@@ -48,13 +59,15 @@ export default function BarcodeDisplay({ card }) {
           value={value}
           format={barcodeFormat}
           width={barWidth}
-          height={120}
+          height={130}
           background="white"
           lineColor="black"
-          maxWidth={MAX_BARCODE_WIDTH - 24}
+          maxWidth={MAX_BARCODE_WIDTH - 32}
         />
       </View>
-      <Text style={styles.value}>{value}</Text>
+      <Text style={[styles.value, { fontSize: dynamicFontSize, width: MAX_BARCODE_WIDTH - 32 }]} numberOfLines={1} adjustsFontSizeToFit>
+        {value}
+      </Text>
     </View>
   );
 }
@@ -82,7 +95,7 @@ const styles = StyleSheet.create({
   container: {
     alignItems: 'center',
     paddingVertical: 20,
-    paddingHorizontal: 12,
+    paddingHorizontal: PADDING,
   },
   barcodeContainer: {
     backgroundColor: 'white',
@@ -100,9 +113,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   value: {
-    fontSize: 14,
     fontWeight: '600',
     color: Colors.textSecondary,
     letterSpacing: 1,
+    textAlign: 'center',
   },
 });

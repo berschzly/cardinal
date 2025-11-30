@@ -4,7 +4,7 @@ import QRCode from 'react-native-qrcode-svg';
 import Colors from '../../constants/Colors';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
-const MAX_BARCODE_WIDTH = SCREEN_WIDTH - 64; // Account for padding
+const MAX_BARCODE_WIDTH = SCREEN_WIDTH - 48; // Reduced padding for more space
 
 export default function BarcodeDisplay({ card }) {
   // Use card_number for barcode generation
@@ -17,7 +17,7 @@ export default function BarcodeDisplay({ card }) {
 
   // QR Code
   if (barcodeType === 'qr') {
-    const qrSize = Math.min(180, MAX_BARCODE_WIDTH - 32);
+    const qrSize = Math.min(240, MAX_BARCODE_WIDTH - 24);
     
     return (
       <View style={styles.container}>
@@ -36,10 +36,10 @@ export default function BarcodeDisplay({ card }) {
     upca: 'UPC',
   }[barcodeType] || 'CODE128';
 
-  // Calculate bar width to fit screen
+  // Calculate bar width to fit screen - aim for larger bars
   const estimatedBars = value.length * 11; // Rough estimate
   const maxBarWidth = MAX_BARCODE_WIDTH / estimatedBars;
-  const barWidth = Math.min(2, Math.max(1, maxBarWidth));
+  const barWidth = Math.min(2.5, Math.max(1.5, maxBarWidth));
 
   return (
     <View style={styles.container}>
@@ -48,10 +48,10 @@ export default function BarcodeDisplay({ card }) {
           value={value}
           format={barcodeFormat}
           width={barWidth}
-          height={80}
+          height={120}
           background="white"
           lineColor="black"
-          maxWidth={MAX_BARCODE_WIDTH - 32}
+          maxWidth={MAX_BARCODE_WIDTH - 24}
         />
       </View>
       <Text style={styles.value}>{value}</Text>
@@ -81,21 +81,23 @@ function detectBarcodeType(value) {
 const styles = StyleSheet.create({
   container: {
     alignItems: 'center',
-    paddingVertical: 16,
-    paddingHorizontal: 16,
+    paddingVertical: 20,
+    paddingHorizontal: 12,
   },
   barcodeContainer: {
     backgroundColor: 'white',
-    padding: 12,
+    padding: 16,
     borderRadius: 12,
     marginBottom: 12,
-    maxWidth: MAX_BARCODE_WIDTH,
+    width: MAX_BARCODE_WIDTH,
+    alignItems: 'center',
   },
   qrContainer: {
     backgroundColor: 'white',
-    padding: 12,
+    padding: 16,
     borderRadius: 12,
     marginBottom: 12,
+    alignItems: 'center',
   },
   value: {
     fontSize: 14,

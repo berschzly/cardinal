@@ -1,7 +1,6 @@
-// app/(tabs)/settings/notification-settings.js
-// Notification Settings Screen
+// Notification Settings Screen - Connected to Database
 
-import { useState } from 'react';
+import { useState, useCallback, memo, useEffect } from 'react';
 import {
   View,
   Text,
@@ -15,9 +14,119 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { getNotificationSettings, updateNotificationSettings, getCards } from '../../../lib/supabase';
+import { handleAsync } from '../../../utils/errorHandling';
+import { LoadingScreen } from '../../../components/common';
+import { rescheduleAllNotifications } from '../../../lib/notifications';
+
+// Memoized components
+const SettingSection = memo(({ title, children }) => (
+  <View style={styles.section}>
+    <Text style={styles.sectionTitle}>{title}</Text>
+    {children}
+  </View>
+));
+
+const SettingToggle = memo(({ icon, title, subtitle, value, onToggle, badge, disabled }) => (
+  <View style={[styles.settingRow, disabled && styles.settingRowDisabled]}>
+    <View style={styles.settingLeft}>
+      <View style={styles.settingIconContainer}>
+        <Ionicons name={icon} size={20} color={disabled ? '#6B7280' : '#9CA3AF'} />
+      </View>
+      <View style={styles.settingContent}>
+        <View style={styles.settingTitleRow}>
+          <Text style={[styles.settingTitle, disabled && styles.disabledText]}>
+            {title}
+          </Text>
+          {badge && (
+            <View style={styles.premiumBadge}>
+              <Ionicons name="star" size={10} color="#141414" />
+              <Text style={styles.premiumBadgeText}>{badge}</Text>
+            </View>
+          )}
+        </View>
+        {subtitle && (
+          <Text style={[styles.settingSubtitle, disabled && styles.disabledText]}>
+            {subtitle}
+          </Text>
+        )}
+      </View>
+    </View>
+    <Switch
+      value={value}
+      onValueChange={onToggle}
+      disabled={disabled}
+      trackColor={{ false: '#2A2A2A', true: '#DC262640' }}
+      thumbColor={value ? '#DC2626' : '#6B7280'}
+      ios_backgroundColor="#2A2A2A"
+    />
+  </View>
+));
+
+const RadiusOption = memo(({ value, label, selected, onPress }) => (
+  <TouchableOpacity
+    style={[styles.radiusOption, selected && styles.radiusOptionSelected]}
+    onPress={onPress}
+    activeOpacity={0.7}
+    accessible={true}
+    accessibilityLabel={`${label} radius`}
+    accessibilityRole="radio"
+    accessibilityState={{ checked: selected }}
+  >
+    <View style={[styles.radioCircle, selected && styles.radioCircleSelected]}>
+      {selected && <View style={styles.radioInner} />}
+    </View>
+    <Text style={[styles.radiusText, selected && styles.radiusTextSelected]}>
+      {label}
+    </Text>
+  </TouchableOpacity>
+));
+
+const Divider = memo(() => <View style={styles.divider} />);
+const SubDivider = memo(() => <View style={styles.subDivider} />);
+
+const PremiumBanner = memo(({ onPress }) => (
+  <TouchableOpacity
+    style={styles.premiumBanner}
+    activeOpacity={0.9}
+    onPress={onPress}
+    accessible={true}
+    accessibilityLabel="Upgrade to premium"
+    accessibilityRole="button"
+  >
+    <View style={styles.premiumBannerContent}>
+      <View style={styles.premiumBannerIcon}>
+        <Ionicons name="star" size={24} color="#F59E0B" />
+      </View>
+      <View style={styles.premiumBannerText}>
+        <Text style={styles.premiumBannerTitle}>Premium Feature</Text>
+        <Text style={styles.premiumBannerSubtitle}>
+          Get notified when near stores
+        </Text>
+      </View>
+    </View>
+    <Ionicons name="arrow-forward" size={20} color="#FFFFFF" />
+  </TouchableOpacity>
+));
+
+const InfoCard = memo(() => (
+  <View style={styles.infoCard}>
+    <View style={styles.infoIconContainer}>
+      <Ionicons name="information-circle" size={24} color="#3B82F6" />
+    </View>
+    <View style={styles.infoContent}>
+      <Text style={styles.infoTitle}>Privacy Note</Text>
+      <Text style={styles.infoText}>
+        You can change these settings anytime. We respect your privacy and only send notifications you've enabled.
+      </Text>
+    </View>
+  </View>
+));
 
 export default function NotificationSettings() {
   const router = useRouter();
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [isPremium, setIsPremium] = useState(false);
 
   // Notification toggles
@@ -37,82 +146,215 @@ export default function NotificationSettings() {
   
   // Location alerts (Premium)
   const [locationAlerts, setLocationAlerts] = useState(false);
-  const [locationRadius, setLocationRadius] = useState('0.5'); // miles
+  const [locationRadius, setLocationRadius] = useState('0.5');
 
   // Marketing
   const [marketingEmails, setMarketingEmails] = useState(false);
 
-  const SettingSection = ({ title, children }) => (
-    <View style={styles.section}>
-      <Text style={styles.sectionTitle}>{title}</Text>
-      {children}
-    </View>
-  );
+  useEffect(() => {
+    loadSettings();
+  }, []);
 
-  const SettingToggle = ({ icon, title, subtitle, value, onToggle, badge, disabled }) => (
-    <View style={[styles.settingRow, disabled && styles.settingRowDisabled]}>
-      <View style={styles.settingLeft}>
-        <View style={styles.settingIconContainer}>
-          <Ionicons name={icon} size={20} color={disabled ? '#6B7280' : '#9CA3AF'} />
-        </View>
-        <View style={styles.settingContent}>
-          <View style={styles.settingTitleRow}>
-            <Text style={[styles.settingTitle, disabled && styles.disabledText]}>
-              {title}
-            </Text>
-            {badge && (
-              <View style={styles.premiumBadge}>
-                <Ionicons name="star" size={10} color="#141414" />
-                <Text style={styles.premiumBadgeText}>{badge}</Text>
-              </View>
-            )}
-          </View>
-          {subtitle && (
-            <Text style={[styles.settingSubtitle, disabled && styles.disabledText]}>
-              {subtitle}
-            </Text>
-          )}
-        </View>
-      </View>
-      <Switch
-        value={value}
-        onValueChange={onToggle}
-        disabled={disabled}
-        trackColor={{ false: '#2A2A2A', true: '#DC262640' }}
-        thumbColor={value ? '#DC2626' : '#6B7280'}
-        ios_backgroundColor="#2A2A2A"
-      />
-    </View>
-  );
+  const loadSettings = async () => {
+    setLoading(true);
+    const result = await handleAsync(
+      () => getNotificationSettings(),
+      { showDefaultError: false }
+    );
 
-  const RadiusOption = ({ value, label, selected, onPress }) => (
-    <TouchableOpacity
-      style={[styles.radiusOption, selected && styles.radiusOptionSelected]}
-      onPress={onPress}
-      activeOpacity={0.7}
-      accessible={true}
-      accessibilityLabel={`${label} radius`}
-      accessibilityRole="radio"
-      accessibilityState={{ checked: selected }}
-    >
-      <View style={[styles.radioCircle, selected && styles.radioCircleSelected]}>
-        {selected && <View style={styles.radioInner} />}
-      </View>
-      <Text style={[styles.radiusText, selected && styles.radiusTextSelected]}>
-        {label}
-      </Text>
-    </TouchableOpacity>
-  );
+    if (result.error) {
+      Alert.alert('Error', 'Failed to load notification settings');
+      setLoading(false);
+      return;
+    }
+
+    if (result.data) {
+      const settings = result.data;
+      setIsPremium(settings.is_premium || false);
+      setPushEnabled(settings.push_notifications ?? true);
+      setEmailEnabled(settings.email_notifications ?? true);
+      setExpiring30Days(settings.expiring_30_days ?? true);
+      setExpiring14Days(settings.expiring_14_days ?? true);
+      setExpiring7Days(settings.expiring_7_days ?? true);
+      setExpiring1Day(settings.expiring_1_day ?? true);
+      setUsageReminders(settings.usage_reminders ?? true);
+      setUnusedCardReminders(settings.unused_card_reminders ?? true);
+      setLocationAlerts(settings.location_alerts ?? false);
+      setLocationRadius(settings.location_radius || '0.5');
+      setMarketingEmails(settings.marketing_emails ?? false);
+
+      // Determine if expiration alerts master toggle should be on
+      const anyExpirationEnabled = 
+        settings.expiring_30_days || 
+        settings.expiring_14_days || 
+        settings.expiring_7_days || 
+        settings.expiring_1_day;
+      setExpirationAlerts(anyExpirationEnabled);
+    }
+
+    setLoading(false);
+  };
+
+  const saveSetting = async (settingName, value) => {
+    setSaving(true);
+    const result = await handleAsync(
+      () => updateNotificationSettings({ [settingName]: value }),
+      { showDefaultError: false }
+    );
+    setSaving(false);
+
+    if (result.error) {
+      Alert.alert('Error', 'Failed to save setting. Please try again.');
+      // Revert the change
+      loadSettings();
+    }
+  };
+
+  const handleBack = useCallback(() => {
+    router.back();
+  }, [router]);
+
+  const handlePremiumPress = useCallback(() => {
+    Alert.alert('Premium Feature', 'Upgrade to Premium to enable location-based alerts.');
+  }, []);
+
+  const handlePushToggle = useCallback((value) => {
+    setPushEnabled(value);
+    saveSetting('push_notifications', value);
+  }, []);
+
+  const handleEmailToggle = useCallback((value) => {
+    setEmailEnabled(value);
+    saveSetting('email_notifications', value);
+  }, []);
+
+  const handleExpirationAlertsToggle = useCallback((value) => {
+    setExpirationAlerts(value);
+    
+    // When master toggle is turned on/off, update all sub-settings
+    setExpiring30Days(value);
+    setExpiring14Days(value);
+    setExpiring7Days(value);
+    setExpiring1Day(value);
+
+    // Save all expiration settings at once
+    updateNotificationSettings({
+      expiring_30_days: value,
+      expiring_14_days: value,
+      expiring_7_days: value,
+      expiring_1_day: value,
+    });
+  }, []);
+
+  const handleExpiring30Toggle = useCallback((value) => {
+    setExpiring30Days(value);
+    saveSetting('expiring_30_days', value);
+    // If any expiration alert is enabled, keep master toggle on
+    if (value) setExpirationAlerts(true);
+  }, []);
+
+  const handleExpiring14Toggle = useCallback((value) => {
+    setExpiring14Days(value);
+    saveSetting('expiring_14_days', value);
+    if (value) setExpirationAlerts(true);
+  }, []);
+
+  const handleExpiring7Toggle = useCallback((value) => {
+    setExpiring7Days(value);
+    saveSetting('expiring_7_days', value);
+    if (value) setExpirationAlerts(true);
+  }, []);
+
+  const handleExpiring1Toggle = useCallback((value) => {
+    setExpiring1Day(value);
+    saveSetting('expiring_1_day', value);
+    if (value) setExpirationAlerts(true);
+  }, []);
+
+  const handleUsageToggle = useCallback((value) => {
+    setUsageReminders(value);
+    saveSetting('usage_reminders', value);
+  }, []);
+
+  const handleUnusedToggle = useCallback((value) => {
+    setUnusedCardReminders(value);
+    saveSetting('unused_card_reminders', value);
+  }, []);
+
+  const handleLocationToggle = useCallback((value) => {
+    if (!isPremium) {
+      Alert.alert('Premium Feature', 'Location alerts are only available with Premium.');
+    } else {
+      setLocationAlerts(value);
+      saveSetting('location_alerts', value);
+    }
+  }, [isPremium]);
+
+  const handleRadiusChange = useCallback((value) => {
+    setLocationRadius(value);
+    saveSetting('location_radius', value);
+  }, []);
+
+  const handleMarketingToggle = useCallback((value) => {
+    setMarketingEmails(value);
+    saveSetting('marketing_emails', value);
+  }, []);
+
+  const handleRescheduleAll = useCallback(async () => {
+    Alert.alert(
+      'Reschedule Notifications',
+      'This will cancel all existing notifications and reschedule them based on your current settings.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Reschedule',
+          onPress: async () => {
+            setSaving(true);
+            
+            // Fetch all cards
+            const cardsResult = await handleAsync(
+              () => getCards(),
+              { showDefaultError: false }
+            );
+            
+            if (cardsResult.error || !cardsResult.data) {
+              Alert.alert('Error', 'Failed to fetch cards');
+              setSaving(false);
+              return;
+            }
+            
+            // Reschedule notifications
+            const success = await rescheduleAllNotifications(cardsResult.data);
+            setSaving(false);
+            
+            if (success) {
+              Alert.alert('Success', 'All notifications have been rescheduled');
+            } else {
+              Alert.alert('Error', 'Failed to reschedule notifications');
+            }
+          },
+        },
+      ]
+    );
+  }, []);
+
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.container} edges={['top']}>
+        <StatusBar barStyle="light-content" backgroundColor="#141414" />
+        <LoadingScreen message="Loading settings..." icon="settings" />
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <StatusBar barStyle="light-content" backgroundColor="#141414" />
       
-      {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity
           style={styles.backButton}
-          onPress={() => router.back()}
+          onPress={handleBack}
           accessible={true}
           accessibilityLabel="Go back"
           accessibilityRole="button"
@@ -120,7 +362,13 @@ export default function NotificationSettings() {
           <Ionicons name="arrow-back" size={24} color="#FFFFFF" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Notifications</Text>
-        <View style={styles.headerRight} />
+        <View style={styles.headerRight}>
+          {saving && (
+            <View style={styles.savingIndicator}>
+              <Text style={styles.savingText}>Saving...</Text>
+            </View>
+          )}
+        </View>
       </View>
 
       <ScrollView 
@@ -128,7 +376,6 @@ export default function NotificationSettings() {
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
       >
-        {/* Master Controls */}
         <SettingSection title="Master Controls">
           <View style={styles.settingsCard}>
             <SettingToggle
@@ -136,20 +383,19 @@ export default function NotificationSettings() {
               title="Push Notifications"
               subtitle="Receive alerts on this device"
               value={pushEnabled}
-              onToggle={setPushEnabled}
+              onToggle={handlePushToggle}
             />
-            <View style={styles.divider} />
+            <Divider />
             <SettingToggle
               icon="mail"
               title="Email Notifications"
               subtitle="Receive alerts via email"
               value={emailEnabled}
-              onToggle={setEmailEnabled}
+              onToggle={handleEmailToggle}
             />
           </View>
         </SettingSection>
 
-        {/* Expiration Alerts */}
         <SettingSection title="Expiration Alerts">
           <View style={styles.settingsCard}>
             <SettingToggle
@@ -157,12 +403,12 @@ export default function NotificationSettings() {
               title="Expiration Reminders"
               subtitle="Get notified before cards expire"
               value={expirationAlerts}
-              onToggle={setExpirationAlerts}
+              onToggle={handleExpirationAlertsToggle}
             />
             
             {expirationAlerts && (
               <>
-                <View style={styles.divider} />
+                <Divider />
                 <View style={styles.subSettingsSection}>
                   <Text style={styles.subSectionTitle}>Remind me at:</Text>
                   <View style={styles.subSettings}>
@@ -170,28 +416,28 @@ export default function NotificationSettings() {
                       icon="calendar-outline"
                       title="30 days before"
                       value={expiring30Days}
-                      onToggle={setExpiring30Days}
+                      onToggle={handleExpiring30Toggle}
                     />
-                    <View style={styles.subDivider} />
+                    <SubDivider />
                     <SettingToggle
                       icon="calendar-outline"
                       title="14 days before"
                       value={expiring14Days}
-                      onToggle={setExpiring14Days}
+                      onToggle={handleExpiring14Toggle}
                     />
-                    <View style={styles.subDivider} />
+                    <SubDivider />
                     <SettingToggle
                       icon="calendar-outline"
                       title="7 days before"
                       value={expiring7Days}
-                      onToggle={setExpiring7Days}
+                      onToggle={handleExpiring7Toggle}
                     />
-                    <View style={styles.subDivider} />
+                    <SubDivider />
                     <SettingToggle
                       icon="calendar-outline"
                       title="1 day before"
                       value={expiring1Day}
-                      onToggle={setExpiring1Day}
+                      onToggle={handleExpiring1Toggle}
                     />
                   </View>
                 </View>
@@ -200,7 +446,6 @@ export default function NotificationSettings() {
           </View>
         </SettingSection>
 
-        {/* Usage Reminders */}
         <SettingSection title="Usage Reminders">
           <View style={styles.settingsCard}>
             <SettingToggle
@@ -208,44 +453,21 @@ export default function NotificationSettings() {
               title="Usage Reminders"
               subtitle="Reminders to use your gift cards"
               value={usageReminders}
-              onToggle={setUsageReminders}
+              onToggle={handleUsageToggle}
             />
-            <View style={styles.divider} />
+            <Divider />
             <SettingToggle
               icon="alert-circle"
               title="Unused Card Alerts"
               subtitle="Alert after 30 days of no use"
               value={unusedCardReminders}
-              onToggle={setUnusedCardReminders}
+              onToggle={handleUnusedToggle}
             />
           </View>
         </SettingSection>
 
-        {/* Location Alerts (Premium) */}
         <SettingSection title="Location Alerts">
-          {!isPremium && (
-            <TouchableOpacity
-              style={styles.premiumBanner}
-              activeOpacity={0.9}
-              onPress={() => Alert.alert('Premium Feature', 'Upgrade to Premium to enable location-based alerts.')}
-              accessible={true}
-              accessibilityLabel="Upgrade to premium"
-              accessibilityRole="button"
-            >
-              <View style={styles.premiumBannerContent}>
-                <View style={styles.premiumBannerIcon}>
-                  <Ionicons name="star" size={24} color="#F59E0B" />
-                </View>
-                <View style={styles.premiumBannerText}>
-                  <Text style={styles.premiumBannerTitle}>Premium Feature</Text>
-                  <Text style={styles.premiumBannerSubtitle}>
-                    Get notified when near stores
-                  </Text>
-                </View>
-              </View>
-              <Ionicons name="arrow-forward" size={20} color="#FFFFFF" />
-            </TouchableOpacity>
-          )}
+          {!isPremium && <PremiumBanner onPress={handlePremiumPress} />}
           
           <View style={styles.settingsCard}>
             <SettingToggle
@@ -254,19 +476,13 @@ export default function NotificationSettings() {
               subtitle="Notify me when near a store"
               badge="PRO"
               value={locationAlerts}
-              onToggle={(value) => {
-                if (!isPremium) {
-                  Alert.alert('Premium Feature', 'Location alerts are only available with Premium.');
-                } else {
-                  setLocationAlerts(value);
-                }
-              }}
+              onToggle={handleLocationToggle}
               disabled={!isPremium}
             />
             
             {locationAlerts && isPremium && (
               <>
-                <View style={styles.divider} />
+                <Divider />
                 <View style={styles.radiusSection}>
                   <Text style={styles.radiusTitle}>Alert Radius</Text>
                   <View style={styles.radiusOptions}>
@@ -274,19 +490,19 @@ export default function NotificationSettings() {
                       value="0.25"
                       label="0.25 mi"
                       selected={locationRadius === '0.25'}
-                      onPress={() => setLocationRadius('0.25')}
+                      onPress={() => handleRadiusChange('0.25')}
                     />
                     <RadiusOption
                       value="0.5"
                       label="0.5 mi"
                       selected={locationRadius === '0.5'}
-                      onPress={() => setLocationRadius('0.5')}
+                      onPress={() => handleRadiusChange('0.5')}
                     />
                     <RadiusOption
                       value="1"
                       label="1 mi"
                       selected={locationRadius === '1'}
-                      onPress={() => setLocationRadius('1')}
+                      onPress={() => handleRadiusChange('1')}
                     />
                   </View>
                 </View>
@@ -295,7 +511,6 @@ export default function NotificationSettings() {
           </View>
         </SettingSection>
 
-        {/* Marketing */}
         <SettingSection title="Marketing">
           <View style={styles.settingsCard}>
             <SettingToggle
@@ -303,22 +518,28 @@ export default function NotificationSettings() {
               title="Marketing Emails"
               subtitle="Tips, offers, and product updates"
               value={marketingEmails}
-              onToggle={setMarketingEmails}
+              onToggle={handleMarketingToggle}
             />
           </View>
         </SettingSection>
 
-        {/* Info Card */}
-        <View style={styles.infoCard}>
-          <View style={styles.infoIconContainer}>
-            <Ionicons name="information-circle" size={24} color="#3B82F6" />
-          </View>
-          <View style={styles.infoContent}>
-            <Text style={styles.infoTitle}>Privacy Note</Text>
-            <Text style={styles.infoText}>
-              You can change these settings anytime. We respect your privacy and only send notifications you've enabled.
+        <InfoCard />
+
+        <View style={styles.rescheduleSection}>
+          <TouchableOpacity
+            style={styles.rescheduleButton}
+            onPress={handleRescheduleAll}
+            disabled={saving}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="sync" size={20} color="#FFFFFF" />
+            <Text style={styles.rescheduleButtonText}>
+              Reschedule All Notifications
             </Text>
-          </View>
+          </TouchableOpacity>
+          <Text style={styles.rescheduleHint}>
+            Apply your current settings to all existing cards
+          </Text>
         </View>
 
         <View style={styles.bottomSpacer} />
@@ -357,7 +578,19 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
   },
   headerRight: {
-    width: 40,
+    width: 80,
+    alignItems: 'flex-end',
+  },
+  savingIndicator: {
+    backgroundColor: '#1F1F1F',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+  },
+  savingText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#9CA3AF',
   },
 
   scrollView: {
@@ -616,6 +849,36 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     color: '#9CA3AF',
     lineHeight: 20,
+  },
+
+  // Reschedule Section
+  rescheduleSection: {
+    marginTop: 8,
+    marginBottom: 24,
+  },
+  rescheduleButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: '#1F1F1F',
+    borderWidth: 2,
+    borderColor: '#2A2A2A',
+    borderRadius: 12,
+    paddingVertical: 16,
+    paddingHorizontal: 24,
+  },
+  rescheduleButtonText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#FFFFFF',
+  },
+  rescheduleHint: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: '#6B7280',
+    textAlign: 'center',
+    marginTop: 8,
   },
 
   bottomSpacer: {

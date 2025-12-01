@@ -1,7 +1,7 @@
 // app/(tabs)/settings/change-password.js
-// Change Password Screen
+// Change Password Screen - Optimized
 
-import { useState } from 'react';
+import { useState, useCallback, memo, useMemo } from 'react';
 import {
   View,
   Text,
@@ -20,7 +20,7 @@ import { supabase } from '../../../lib/supabase';
 import { handleAsync } from '../../../utils/errorHandling';
 import { isValidPassword } from '../../../utils/validation';
 
-const PasswordInput = ({ label, value, onChangeText, show, toggleShow, placeholder }) => (
+const PasswordInput = memo(({ label, value, onChangeText, show, toggleShow, placeholder }) => (
   <View style={styles.inputGroup}>
     <Text style={styles.inputLabel}>{label}</Text>
     <View style={styles.inputCard}>
@@ -53,7 +53,46 @@ const PasswordInput = ({ label, value, onChangeText, show, toggleShow, placehold
       </View>
     </View>
   </View>
-);
+));
+
+const HeroSection = memo(() => (
+  <View style={styles.heroSection}>
+    <View style={styles.heroIcon}>
+      <Ionicons name="shield-checkmark" size={40} color="#FFFFFF" />
+    </View>
+    <Text style={styles.heroTitle}>Update Your Password</Text>
+    <Text style={styles.heroSubtitle}>
+      Choose a strong password to keep your account secure
+    </Text>
+  </View>
+));
+
+const RequirementItem = memo(({ met, text }) => (
+  <View style={styles.requirementItem}>
+    <Ionicons 
+      name={met ? "checkmark-circle" : "ellipse-outline"} 
+      size={20} 
+      color={met ? "#10B981" : "#6B7280"} 
+    />
+    <Text style={[styles.requirementText, met && styles.requirementMet]}>
+      {text}
+    </Text>
+  </View>
+));
+
+const TipCard = memo(() => (
+  <View style={styles.tipCard}>
+    <View style={styles.tipIconContainer}>
+      <Ionicons name="information-circle" size={24} color="#3B82F6" />
+    </View>
+    <View style={styles.tipContent}>
+      <Text style={styles.tipTitle}>Security Tip</Text>
+      <Text style={styles.tipText}>
+        Use a unique password you don't use on other websites. Consider using a password manager.
+      </Text>
+    </View>
+  </View>
+));
 
 export default function ChangePassword() {
   const router = useRouter();
@@ -62,32 +101,48 @@ export default function ChangePassword() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
   
-  // Password visibility toggles
   const [showCurrentPassword, setShowCurrentPassword] = useState(false);
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
-  // Password strength
-  const getPasswordStrength = (password) => {
-    if (password.length === 0) return null;
-    if (password.length < 8) return { text: 'Weak', color: '#DC2626' };
-    if (password.length < 12) return { text: 'Fair', color: '#F59E0B' };
-    if (!/[A-Z]/.test(password) || !/[0-9]/.test(password)) {
-      return { text: 'Good', color: '#3B82F6' };
+  const passwordStrength = useMemo(() => {
+    if (newPassword.length === 0) return null;
+    if (newPassword.length < 8) return { text: 'Weak', color: '#DC2626', width: '25%' };
+    if (newPassword.length < 12) return { text: 'Fair', color: '#F59E0B', width: '50%' };
+    if (!/[A-Z]/.test(newPassword) || !/[0-9]/.test(newPassword)) {
+      return { text: 'Good', color: '#3B82F6', width: '75%' };
     }
-    return { text: 'Strong', color: '#10B981' };
-  };
+    return { text: 'Strong', color: '#10B981', width: '100%' };
+  }, [newPassword]);
 
-  const passwordStrength = getPasswordStrength(newPassword);
+  const requirements = useMemo(() => [
+    { met: newPassword.length >= 8, text: 'At least 8 characters' },
+    { met: /[A-Z]/.test(newPassword), text: 'One uppercase letter' },
+    { met: /[0-9]/.test(newPassword), text: 'One number' },
+  ], [newPassword]);
 
-  const handleChangePassword = async () => {
-    // Validation
+  const handleBack = useCallback(() => {
+    router.back();
+  }, [router]);
+
+  const toggleCurrentPassword = useCallback(() => {
+    setShowCurrentPassword(prev => !prev);
+  }, []);
+
+  const toggleNewPassword = useCallback(() => {
+    setShowNewPassword(prev => !prev);
+  }, []);
+
+  const toggleConfirmPassword = useCallback(() => {
+    setShowConfirmPassword(prev => !prev);
+  }, []);
+
+  const handleChangePassword = useCallback(async () => {
     if (!currentPassword || !newPassword || !confirmPassword) {
       Alert.alert('Error', 'Please fill in all fields');
       return;
     }
 
-    // Validate new password
     const passwordValidation = isValidPassword(newPassword);
     if (!passwordValidation.isValid) {
       Alert.alert('Invalid Password', passwordValidation.error);
@@ -106,7 +161,6 @@ export default function ChangePassword() {
 
     setLoading(true);
     
-    // First verify current password by attempting to sign in
     const { data: { user } } = await supabase.auth.getUser();
     const verifyResult = await handleAsync(
       async () => {
@@ -126,7 +180,6 @@ export default function ChangePassword() {
       return;
     }
 
-    // Update password
     const result = await handleAsync(
       async () => {
         const { error } = await supabase.auth.updateUser({ 
@@ -150,17 +203,16 @@ export default function ChangePassword() {
       'Your password has been changed successfully',
       [{ text: 'OK', onPress: () => router.back() }]
     );
-  };
+  }, [currentPassword, newPassword, confirmPassword, router]);
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <StatusBar barStyle="light-content" backgroundColor="#141414" />
       
-      {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity
           style={styles.backButton}
-          onPress={() => router.back()}
+          onPress={handleBack}
           accessible={true}
           accessibilityLabel="Go back"
           accessibilityRole="button"
@@ -177,25 +229,15 @@ export default function ChangePassword() {
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
-        {/* Security Icon */}
-        <View style={styles.heroSection}>
-          <View style={styles.heroIcon}>
-            <Ionicons name="shield-checkmark" size={40} color="#FFFFFF" />
-          </View>
-          <Text style={styles.heroTitle}>Update Your Password</Text>
-          <Text style={styles.heroSubtitle}>
-            Choose a strong password to keep your account secure
-          </Text>
-        </View>
+        <HeroSection />
 
-        {/* Form Section */}
         <View style={styles.section}>
           <PasswordInput
             label="Current Password"
             value={currentPassword}
             onChangeText={setCurrentPassword}
             show={showCurrentPassword}
-            toggleShow={() => setShowCurrentPassword(!showCurrentPassword)}
+            toggleShow={toggleCurrentPassword}
             placeholder="Enter current password"
           />
 
@@ -204,11 +246,10 @@ export default function ChangePassword() {
             value={newPassword}
             onChangeText={setNewPassword}
             show={showNewPassword}
-            toggleShow={() => setShowNewPassword(!showNewPassword)}
+            toggleShow={toggleNewPassword}
             placeholder="Enter new password"
           />
 
-          {/* Password Strength Indicator */}
           {passwordStrength && (
             <View style={styles.strengthContainer}>
               <View style={styles.strengthBar}>
@@ -216,9 +257,7 @@ export default function ChangePassword() {
                   style={[
                     styles.strengthFill, 
                     { 
-                      width: passwordStrength.text === 'Weak' ? '25%' : 
-                             passwordStrength.text === 'Fair' ? '50%' :
-                             passwordStrength.text === 'Good' ? '75%' : '100%',
+                      width: passwordStrength.width,
                       backgroundColor: passwordStrength.color 
                     }
                   ]} 
@@ -235,58 +274,20 @@ export default function ChangePassword() {
             value={confirmPassword}
             onChangeText={setConfirmPassword}
             show={showConfirmPassword}
-            toggleShow={() => setShowConfirmPassword(!showConfirmPassword)}
+            toggleShow={toggleConfirmPassword}
             placeholder="Re-enter new password"
           />
         </View>
 
-        {/* Password Requirements */}
         <View style={styles.requirementsCard}>
           <Text style={styles.requirementsTitle}>Password Requirements</Text>
           <View style={styles.requirementsList}>
-            <View style={styles.requirementItem}>
-              <Ionicons 
-                name={newPassword.length >= 8 ? "checkmark-circle" : "ellipse-outline"} 
-                size={20} 
-                color={newPassword.length >= 8 ? "#10B981" : "#6B7280"} 
-              />
-              <Text style={[
-                styles.requirementText,
-                newPassword.length >= 8 && styles.requirementMet
-              ]}>
-                At least 8 characters
-              </Text>
-            </View>
-            <View style={styles.requirementItem}>
-              <Ionicons 
-                name={/[A-Z]/.test(newPassword) ? "checkmark-circle" : "ellipse-outline"} 
-                size={20} 
-                color={/[A-Z]/.test(newPassword) ? "#10B981" : "#6B7280"} 
-              />
-              <Text style={[
-                styles.requirementText,
-                /[A-Z]/.test(newPassword) && styles.requirementMet
-              ]}>
-                One uppercase letter
-              </Text>
-            </View>
-            <View style={styles.requirementItem}>
-              <Ionicons 
-                name={/[0-9]/.test(newPassword) ? "checkmark-circle" : "ellipse-outline"} 
-                size={20} 
-                color={/[0-9]/.test(newPassword) ? "#10B981" : "#6B7280"} 
-              />
-              <Text style={[
-                styles.requirementText,
-                /[0-9]/.test(newPassword) && styles.requirementMet
-              ]}>
-                One number
-              </Text>
-            </View>
+            {requirements.map((req, idx) => (
+              <RequirementItem key={idx} met={req.met} text={req.text} />
+            ))}
           </View>
         </View>
 
-        {/* Update Button */}
         <TouchableOpacity
           style={styles.updateButton}
           onPress={handleChangePassword}
@@ -303,18 +304,7 @@ export default function ChangePassword() {
           )}
         </TouchableOpacity>
 
-        {/* Security Tip */}
-        <View style={styles.tipCard}>
-          <View style={styles.tipIconContainer}>
-            <Ionicons name="information-circle" size={24} color="#3B82F6" />
-          </View>
-          <View style={styles.tipContent}>
-            <Text style={styles.tipTitle}>Security Tip</Text>
-            <Text style={styles.tipText}>
-              Use a unique password you don't use on other websites. Consider using a password manager.
-            </Text>
-          </View>
-        </View>
+        <TipCard />
 
         <View style={styles.bottomSpacer} />
       </ScrollView>

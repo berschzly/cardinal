@@ -18,6 +18,8 @@ import { getCard, deleteCard } from '../../lib/supabase';
 import BarcodeDisplay from '../../components/modals/BarcodeDisplay';
 import { formatDate, getExpirationStatus } from '../../utils/dateHelpers';
 import { cancelCardNotifications } from '../../lib/notifications';
+import { formatCardNumberDisplay, getMaskedCardNumber } from '../../utils/formatter';
+import { LoadingScreen } from '../../components/common';
 
 export default function CardDetail() {
   const { id } = useLocalSearchParams();
@@ -87,12 +89,7 @@ export default function CardDetail() {
   if (loading) {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
-        <View style={styles.loadingContainer}>
-          <View style={styles.loadingIcon}>
-            <Ionicons name="card" size={32} color="#DC2626" />
-          </View>
-          <Text style={styles.loadingText}>Loading card...</Text>
-        </View>
+        <LoadingScreen message="Loading card..." icon="card-outline" />
       </SafeAreaView>
     );
   }
@@ -277,8 +274,8 @@ export default function CardDetail() {
                     <Text style={styles.infoLabel}>Card Number</Text>
                     <Text style={styles.infoValue}>
                       {showFullNumber 
-                        ? card.card_number 
-                        : `•••• •••• •••• ${card.card_number.slice(-4)}`
+                        ? formatCardNumberDisplay(card.card_number)
+                        : getMaskedCardNumber(card.card_number)
                       }
                     </Text>
                   </View>
@@ -392,29 +389,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#141414',
-  },
-
-  // Loading State
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  loadingIcon: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: '#1F1F1F',
-    borderWidth: 2,
-    borderColor: '#DC2626',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  loadingText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#9CA3AF',
   },
 
   // Header

@@ -11,10 +11,12 @@ import {
   Platform,
   ScrollView,
   Alert,
+  Image,  // Add this
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { signIn } from '../../lib/supabase';
+import logo from '../../assets/images/logo.png'
 
 export default function SignIn() {
   const [email, setEmail] = useState('');
@@ -56,7 +58,11 @@ export default function SignIn() {
           <View style={styles.header}>
             <View style={styles.logoContainer}>
               <View style={styles.logo}>
-                <Text style={styles.logoEmoji}>🎴</Text>
+                <Image 
+                  source={logo} 
+                  style={styles.logoImage}
+                  resizeMode="contain"
+                />
               </View>
             </View>
             <TouchableOpacity 
@@ -274,5 +280,10 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '600',
     color: '#DC2626',
+  },
+  logoImage: {
+    width: 48,
+    height: 48,
+    borderRadius: 25,
   },
 });

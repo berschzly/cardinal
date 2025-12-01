@@ -1,4 +1,4 @@
-import { Stack, useRouter, useSegments } from 'expo-router';
+import { Stack, useRouter, useSegments, useRootNavigationState } from 'expo-router';
 import { useEffect, useState, useRef } from 'react';
 import * as Notifications from 'expo-notifications';
 import { View, ActivityIndicator, StyleSheet } from 'react-native';
@@ -22,27 +22,33 @@ export default function RootLayout() {
 
   const router = useRouter();
   const segments = useSegments();
+  const navigationState = useRootNavigationState();
 
   const notifListener = useRef(null);
   const tapListener = useRef(null);
 
   /** --------------------------
    * 1) Load initial Supabase session & listen for auth changes
+   * FIXED: Added getSession() call on mount
    * -------------------------- */
   useEffect(() => {
     let mounted = true;
 
-    // Get initial session
+    // Check for existing session on mount
     supabase.auth.getSession().then(({ data: { session } }) => {
-      if (!mounted) return;
-      setSession(session);
-      setLoading(false);
+      if (mounted) {
+        setSession(session);
+        setLoading(false);
+      }
     });
 
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (_event, newSession) => {
-        setSession(newSession);
+      (event, session) => {
+        if (!mounted) return;
+        console.log('Auth state changed:', event, !!session);
+        setSession(session);
+        setLoading(false);
       }
     );
 
@@ -54,41 +60,29 @@ export default function RootLayout() {
 
   /** --------------------------
    * 2) Navigation gate: redirect based on session
+   * FIXED: Simplified logic to prevent loops
    * -------------------------- */
   useEffect(() => {
-    if (loading) return;
-    if (!segments || segments.length === 0) return;
+    // Wait for both loading and navigation to be ready
+    if (loading || !navigationState?.key) return;
 
-    const AUTH_SCREENS = ['welcome', 'sign-in', 'sign-up', 'forgot-password'];
-    const group = segments[0];    // e.g. "(auth)" or "(tabs)"
-    const screen = segments[1];   // e.g. "welcome" or "sign-in"
+    const inAuthGroup = segments[0] === '(auth)';
 
-    const inAuthGroup = group === '(auth)';
-    const onAuthScreen = AUTH_SCREENS.includes(screen);
+    console.log("Navigation check:", {
+      hasSession: !!session,
+      inAuthGroup,
+      segments,
+    });
 
-    // Debugging logs (optional, remove in production)
-    console.log('Navigation - group:', group, 'screen:', screen, 'session:', !!session);
-
-    // Not logged in → redirect to welcome screen
+    // Redirect logic
     if (!session && !inAuthGroup) {
-      console.log('No session, redirecting to welcome');
-      router.replace('/(auth)/welcome');
-      return;
+      // User is logged out but not in auth screens
+      router.replace("/(auth)/welcome");
+    } else if (session && inAuthGroup) {
+      // User is logged in but still in auth screens
+      router.replace("/(tabs)");
     }
-
-    // Logged in but on sign-in/sign-up → redirect to dashboard
-    if (session && inAuthGroup && (screen === 'sign-in' || screen === 'sign-up')) {
-      console.log('Session exists, redirecting to dashboard');
-      router.replace('/(tabs)');
-      return;
-    }
-
-    // Logged in but on welcome screen → redirect to dashboard
-    if (session && inAuthGroup && screen === 'welcome') {
-      console.log('Session exists, redirecting to dashboard');
-      router.replace('/(tabs)');
-    }
-  }, [session, loading, segments]);
+  }, [session, loading, segments, navigationState?.key]);
 
   /** --------------------------
    * 3) Notification listeners
@@ -125,7 +119,7 @@ export default function RootLayout() {
   /** --------------------------
    * 4) Loading screen while session is being checked
    * -------------------------- */
-  if (loading) {
+  if (loading || !navigationState?.key) {
     return (
       <View style={styles.loadingContainer}>
         <View style={styles.logo}>

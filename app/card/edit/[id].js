@@ -37,6 +37,8 @@ import {
   Button,
   DatePickerInput,
 } from '../../../components/common';
+import { formatCardNumberInput, stripCardNumberFormatting, formatCardNumberDisplay } from '../../../utils/formatter';
+import { LoadingScreen } from '../../../components/common';
 
 export default function EditCard() {
   const { id } = useLocalSearchParams();
@@ -81,7 +83,7 @@ export default function EditCard() {
     setName(card.name || '');
     setBrand(card.brand || '');
     setBalance(card.balance?.toString() || '');
-    setCardNumber(card.card_number || '');
+    setCardNumber(formatCardNumberDisplay(card.card_number || ''));
     setPin(card.pin || '');
     setNotes(card.notes || '');
     setExpirationDate(card.expiration_date ? new Date(card.expiration_date) : null);
@@ -117,10 +119,13 @@ export default function EditCard() {
     setTouched({ name: true, balance: true, card_number: true, pin: true });
 
     const cardData = {
-      name, brand, balance,
-      card_number: cardNumber,
-      pin, notes,
-      expiration_date: expirationDate ? expirationDate.toISOString().split('T')[0] : null,
+      name, 
+      brand, 
+      balance,
+      card_number: stripCardNumberFormatting(cardNumber), // Removes spaces before DB save
+      pin, 
+      notes,
+      expiration_date: expirationDate ? formatDateForInput(expirationDate) : null,
     };
 
     const validation = validateCardData(cardData);
@@ -193,12 +198,7 @@ export default function EditCard() {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
         <StatusBar barStyle="light-content" backgroundColor="#141414" />
-        <View style={styles.loadingContainer}>
-          <View style={styles.logoIcon}>
-            <Ionicons name="card" size={40} color="#FFFFFF" />
-          </View>
-          <Text style={styles.loadingText}>Loading card...</Text>
-        </View>
+        <LoadingScreen message="Loading card..." icon="create-outline" />
       </SafeAreaView>
     );
   }
@@ -302,14 +302,18 @@ export default function EditCard() {
             <FormInput
               label="Card Number"
               value={cardNumber}
-              onChangeText={(val) => handleFieldChange('card_number', val, setCardNumber)}
+              onChangeText={(val) => {
+                const formatted = formatCardNumberInput(val);
+                handleFieldChange('card_number', formatted, setCardNumber);
+              }}
               onBlur={() => handleFieldBlur('card_number')}
               error={fieldErrors.card_number}
               touched={touched.card_number}
-              placeholder="1234567890123"
+              placeholder="1234 5678 9012 3456"
               helperText="Used to generate your scannable barcode"
-              maxLength={30}
-              keyboardType="number-pad"
+              maxLength={35}
+              keyboardType="default"
+              autoCapitalize="characters"
             />
 
             <FormInput
@@ -405,28 +409,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     paddingTop: 8,
     paddingBottom: 40,
-  },
-
-  // Loading State
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 24,
-  },
-  logoIcon: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: '#DC2626',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 24,
-  },
-  loadingText: {
-    fontSize: 17,
-    fontWeight: '600',
-    color: '#9CA3AF',
   },
 
   // Header

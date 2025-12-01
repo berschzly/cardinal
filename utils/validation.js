@@ -5,6 +5,9 @@
  * @param {string} email - Email address to validate
  * @returns {object} - { isValid: boolean, error: string }
  */
+
+import { validateCardNumber, stripCardNumberFormatting } from './formatter';
+
 export function isValidEmail(email) {
   if (!email || email.trim().length === 0) {
     return { isValid: false, error: 'Email is required' };
@@ -104,31 +107,7 @@ export function isValidBalance(balance) {
  * @returns {object} - { isValid: boolean, error: string }
  */
 export function isValidCardNumber(cardNumber) {
-  if (!cardNumber || cardNumber.trim().length === 0) {
-    return { isValid: true, error: null }; // Optional field
-  }
-  
-  // Remove spaces and dashes for validation
-  const cleaned = cardNumber.replace(/[\s-]/g, '');
-  
-  if (cleaned.length === 0) {
-    return { isValid: true, error: null };
-  }
-  
-  // Allow alphanumeric for flexibility (some cards have letters)
-  if (!/^[A-Za-z0-9]+$/.test(cleaned)) {
-    return { isValid: false, error: 'Card number can only contain letters and numbers' };
-  }
-  
-  if (cleaned.length < 4) {
-    return { isValid: false, error: 'Card number must be at least 4 characters' };
-  }
-  
-  if (cleaned.length > 30) {
-    return { isValid: false, error: 'Card number is too long' };
-  }
-  
-  return { isValid: true, error: null };
+  return validateCardNumber(cardNumber);
 }
 
 /**
@@ -269,7 +248,7 @@ export function sanitizeCardData(cardData) {
   const sanitized = {
     name: cardData.name?.trim() || '',
     brand: cardData.brand?.trim() || null,
-    card_number: cardData.card_number?.trim() || null,
+    card_number: cardData.card_number ? stripCardNumberFormatting(cardData.card_number) : null, // ✅ Strip spaces
     pin: cardData.pin?.trim() || null,
     notes: cardData.notes?.trim() || null,
     expiration_date: cardData.expiration_date || null,

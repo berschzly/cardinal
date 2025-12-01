@@ -1,6 +1,6 @@
-// Add new card screen - Polished design
+// Add new card screen - Performance optimized
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useMemo, memo, useRef } from 'react';
 import {
   View,
   Text,
@@ -39,6 +39,109 @@ import {
   LoadingState,
   DatePickerInput,
 } from '../../components/common';
+import { formatCardNumberInput, stripCardNumberFormatting } from '../../utils/formatter';
+import { LoadingScreen } from '../../components/common';
+
+// Move constants outside component
+const PREMIUM_FEATURES = [
+  { icon: 'infinite', title: 'Unlimited Cards' },
+  { icon: 'location', title: 'Location Alerts' },
+  { icon: 'color-palette', title: 'Custom Themes' },
+  { icon: 'flash', title: 'Priority Support' },
+];
+
+// Memoized components
+const ScanCardButton = memo(({ onPress }) => (
+  <TouchableOpacity
+    style={styles.scanCard}
+    onPress={onPress}
+    activeOpacity={0.9}
+  >
+    <LinearGradient
+      colors={['#3A1515', '#2A1515', '#DC2626']}
+      start={{ x: 0, y: 0 }}
+      end={{ x: 1, y: 1 }}
+      style={styles.scanGradient}
+    >
+      <View style={styles.scanIconContainer}>
+        <Ionicons name="camera" size={28} color="#FFFFFF" />
+      </View>
+      <View style={styles.scanTextContainer}>
+        <Text style={styles.scanTitle}>Scan with Camera</Text>
+        <Text style={styles.scanSubtitle}>
+          AI extracts card details instantly
+        </Text>
+      </View>
+      <View style={styles.scanArrowContainer}>
+        <Ionicons name="arrow-forward" size={20} color="#FFFFFF" />
+      </View>
+    </LinearGradient>
+  </TouchableOpacity>
+));
+
+const PremiumFeaturesList = memo(() => (
+  <View style={styles.premiumFeatures}>
+    {PREMIUM_FEATURES.map((feature) => (
+      <View key={feature.icon} style={styles.premiumFeatureItem}>
+        <View style={styles.premiumFeatureIcon}>
+          <Ionicons name={feature.icon} size={18} color="#9CA3AF" />
+        </View>
+        <Text style={styles.premiumFeatureTitle}>{feature.title}</Text>
+        <Ionicons name="checkmark-circle" size={18} color="#10B981" />
+      </View>
+    ))}
+  </View>
+));
+
+const WarningCard = memo(({ cardCount, onPress }) => (
+  <TouchableOpacity 
+    style={styles.warningCard}
+    onPress={onPress}
+    activeOpacity={0.8}
+  >
+    <View style={styles.warningContent}>
+      <Ionicons name="alert-circle" size={24} color="#F59E0B" />
+      <View style={styles.warningTextContainer}>
+        <Text style={styles.warningTitle}>Almost at your limit</Text>
+        <Text style={styles.warningText}>
+          {Math.max(10 - cardCount, 0)} cards remaining • Tap to upgrade
+        </Text>
+      </View>
+      <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
+    </View>
+  </TouchableOpacity>
+));
+
+const ErrorBanner = memo(({ error, onDismiss }) => (
+  <View style={styles.errorBanner}>
+    <View style={styles.errorBannerContent}>
+      <Ionicons name="warning" size={20} color="#FFFFFF" />
+      <Text style={styles.errorBannerText}>{error}</Text>
+    </View>
+    <TouchableOpacity 
+      onPress={onDismiss}
+      accessible={true}
+      accessibilityLabel="Dismiss error"
+      accessibilityRole="button"
+    >
+      <Ionicons name="close" size={20} color="#FFFFFF" />
+    </TouchableOpacity>
+  </View>
+));
+
+const InfoCard = memo(() => (
+  <View style={styles.infoCard}>
+    <View style={styles.infoIconContainer}>
+      <Ionicons name="information-circle" size={24} color="#DC2626" />
+    </View>
+    <View style={styles.infoContent}>
+      <Text style={styles.infoTitle}>Pro Tip</Text>
+      <Text style={styles.infoText}>
+        Only the card name is required. Add as much or as little detail as you want.
+      </Text>
+    </View>
+  </View>
+));
 
 export default function AddCard() {
   const router = useRouter();
@@ -65,10 +168,10 @@ export default function AddCard() {
   const [showPremiumModal, setShowPremiumModal] = useState(false);
   const [error, setError] = useState(null);
 
-  // Pan Responder for modal gesture - MUST be before any conditional returns
-  const [panResponder] = useState(() => {
-    const translateY = new Animated.Value(1000); // Start off-screen
-    const backdropOpacity = new Animated.Value(0); // Start transparent
+  // Pan Responder for modal gesture
+  const panResponderConfig = useMemo(() => {
+    const translateY = new Animated.Value(1000);
+    const backdropOpacity = new Animated.Value(0);
 
     return {
       panResponder: PanResponder.create({
@@ -119,48 +222,55 @@ export default function AddCard() {
       translateY,
       backdropOpacity,
     };
-  });
+  }, []);
 
   useEffect(() => {
     checkCardLimit();
   }, []);
 
-  // Add this NEW useEffect:
   useEffect(() => {
     if (showPremiumModal) {
       Animated.parallel([
-        Animated.spring(panResponder.translateY, {
+        Animated.spring(panResponderConfig.translateY, {
           toValue: 0,
           useNativeDriver: true,
           tension: 65,
           friction: 11,
         }),
-        Animated.timing(panResponder.backdropOpacity, {
+        Animated.timing(panResponderConfig.backdropOpacity, {
           toValue: 0.8,
           duration: 300,
           useNativeDriver: true,
         }),
       ]).start();
     } else {
-      panResponder.translateY.setValue(1000);
-      panResponder.backdropOpacity.setValue(0);
+      panResponderConfig.translateY.setValue(1000);
+      panResponderConfig.backdropOpacity.setValue(0);
     }
   }, [showPremiumModal]);
 
-  async function checkCardLimit() {
-    const cardsResult = await handleAsync(() => getCards(), { showDefaultError: false });
-    const settingsResult = await handleAsync(() => getUserSettings(), { showDefaultError: false });
+  const checkCardLimit = useCallback(async () => {
+    const [cardsResult, settingsResult] = await Promise.allSettled([
+      handleAsync(() => getCards(), { showDefaultError: false }),
+      handleAsync(() => getUserSettings(), { showDefaultError: false })
+    ]);
 
-    if (cardsResult.error || settingsResult.error) {
-      setError('Unable to check card limit. You can still add cards.');
-    } else {
-      setCardCount(cardsResult.data?.length || 0);
-      setIsPremium(settingsResult.data?.is_premium || false);
+    if (cardsResult.status === 'fulfilled' && !cardsResult.value.error) {
+      setCardCount(cardsResult.value.data?.length || 0);
     }
+    
+    if (settingsResult.status === 'fulfilled' && !settingsResult.value.error) {
+      setIsPremium(settingsResult.value.data?.is_premium || false);
+    }
+    
+    if (cardsResult.status === 'rejected' || settingsResult.status === 'rejected') {
+      setError('Unable to check card limit. You can still add cards.');
+    }
+    
     setInitialLoading(false);
-  }
+  }, []);
 
-  function validateField(field, value) {
+  const validateField = useCallback((field, value) => {
     let validation = { isValid: true, error: null };
     switch (field) {
       case 'name': validation = isValidCardName(value); break;
@@ -172,18 +282,30 @@ export default function AddCard() {
       ...prev,
       [field]: validation.isValid ? null : validation.error,
     }));
-  }
+  }, []);
 
-  function handleFieldChange(field, value, setter) {
+  const handleFieldChange = useCallback((field, value, setter) => {
     setter(value);
     if (touched[field]) validateField(field, value);
-  }
+  }, [touched, validateField]);
 
-  function handleFieldBlur(field) {
+  const handleFieldBlur = useCallback((field) => {
     setTouched(prev => ({ ...prev, [field]: true }));
-  }
+  }, []);
 
-  async function handleSaveCard() {
+  const clearForm = useCallback(() => {
+    setName('');
+    setBrand('');
+    setBalance('');
+    setCardNumber('');
+    setPin('');
+    setNotes('');
+    setExpirationDate(null);
+    setFieldErrors({});
+    setTouched({});
+  }, []);
+
+  const handleSaveCard = useCallback(async () => {
     setTouched({ name: true, balance: true, card_number: true, pin: true });
 
     if (!isPremium && cardCount >= 10) {
@@ -192,10 +314,13 @@ export default function AddCard() {
     }
 
     const cardData = {
-      name, brand, balance,
-      card_number: cardNumber,
-      pin, notes,
-      expiration_date: expirationDate ? expirationDate.toISOString().split('T')[0] : null,
+      name, 
+      brand, 
+      balance,
+      card_number: stripCardNumberFormatting(cardNumber),
+      pin, 
+      notes,
+      expiration_date: expirationDate ? formatDateForInput(expirationDate) : null,
     };
 
     const validation = validateCardData(cardData);
@@ -248,21 +373,9 @@ export default function AddCard() {
       { text: 'Add Another', style: 'cancel' },
       { text: 'View Cards', onPress: () => router.push('/(tabs)') },
     ]);
-  }
+  }, [isPremium, cardCount, name, brand, balance, cardNumber, pin, notes, expirationDate, clearForm, router]);
 
-  function clearForm() {
-    setName('');
-    setBrand('');
-    setBalance('');
-    setCardNumber('');
-    setPin('');
-    setNotes('');
-    setExpirationDate(null);
-    setFieldErrors({});
-    setTouched({});
-  }
-
-  function handleScanComplete(ocrData) {
+  const handleScanComplete = useCallback((ocrData) => {
     setShowScanner(false);
     if (ocrData.brand) setBrand(ocrData.brand);
     if (ocrData.cardNumber) {
@@ -281,19 +394,39 @@ export default function AddCard() {
       setExpirationDate(new Date(ocrData.expirationDate));
     }
     Alert.alert('Scan Complete', 'Review and edit the details below');
-  }
+  }, [validateField]);
 
-  // Loading state check AFTER all hooks
+  const progressPercentage = useMemo(() => 
+    Math.min((cardCount / 10) * 100, 100),
+    [cardCount]
+  );
+
+  const slotsRemaining = useMemo(() => 
+    Math.max(10 - cardCount, 0),
+    [cardCount]
+  );
+
+  const showWarning = useMemo(() => 
+    !isPremium && cardCount >= 8,
+    [isPremium, cardCount]
+  );
+
+  const handleDismissError = useCallback(() => setError(null), []);
+  const handleShowPremiumModal = useCallback(() => setShowPremiumModal(true), []);
+  const handleClosePremiumModal = useCallback(() => setShowPremiumModal(false), []);
+  const handleShowScanner = useCallback(() => setShowScanner(true), []);
+  const handleCloseScanner = useCallback(() => setShowScanner(false), []);
+
+  const handleUpgradePress = useCallback(() => {
+    Alert.alert('Premium Coming Soon', 'Premium subscriptions will be available after launch.');
+    setShowPremiumModal(false);
+  }, []);
+
   if (initialLoading) {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
         <StatusBar barStyle="light-content" backgroundColor="#141414" />
-        <View style={styles.loadingContainer}>
-          <View style={styles.logoIcon}>
-            <Ionicons name="card" size={40} color="#FFFFFF" />
-          </View>
-          <Text style={styles.loadingText}>Preparing form...</Text>
-        </View>
+        <LoadingScreen message="Preparing form..." icon="create" />
       </SafeAreaView>
     );
   }
@@ -305,7 +438,7 @@ export default function AddCard() {
       <KeyboardAvoidingView 
         style={styles.keyboardView}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+        keyboardVerticalOffset={0}
       >
         <ScrollView
           style={styles.scrollView}
@@ -328,78 +461,26 @@ export default function AddCard() {
                   <View 
                     style={[
                       styles.progressFill, 
-                      { width: `${Math.min((cardCount / 10) * 100, 100)}%` }
+                      { width: `${progressPercentage}%` }
                     ]} 
                   />
                 </View>
                 <Text style={styles.progressText}>
-                  {Math.max(10 - cardCount, 0)} slots remaining
+                  {slotsRemaining} slots remaining
                 </Text>
               </View>
             )}
           </View>
 
           {error && (
-            <View style={styles.errorBanner}>
-              <View style={styles.errorBannerContent}>
-                <Ionicons name="warning" size={20} color="#FFFFFF" />
-                <Text style={styles.errorBannerText}>{error}</Text>
-              </View>
-              <TouchableOpacity 
-                onPress={() => setError(null)}
-                accessible={true}
-                accessibilityLabel="Dismiss error"
-                accessibilityRole="button"
-              >
-                <Ionicons name="close" size={20} color="#FFFFFF" />
-              </TouchableOpacity>
-            </View>
+            <ErrorBanner error={error} onDismiss={handleDismissError} />
           )}
           
-          {!isPremium && cardCount >= 8 && (
-            <TouchableOpacity 
-              style={styles.warningCard}
-              onPress={() => setShowPremiumModal(true)}
-              activeOpacity={0.8}
-            >
-              <View style={styles.warningContent}>
-                <Ionicons name="alert-circle" size={24} color="#F59E0B" />
-                <View style={styles.warningTextContainer}>
-                  <Text style={styles.warningTitle}>Almost at your limit</Text>
-                  <Text style={styles.warningText}>
-                    {Math.max(10 - cardCount, 0)} cards remaining • Tap to upgrade
-                  </Text>
-                </View>
-                <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
-              </View>
-            </TouchableOpacity>
+          {showWarning && (
+            <WarningCard cardCount={cardCount} onPress={handleShowPremiumModal} />
           )}
 
-          <TouchableOpacity
-            style={styles.scanCard}
-            onPress={() => setShowScanner(true)}
-            activeOpacity={0.9}
-          >
-            <LinearGradient
-              colors={['#3A1515', '#2A1515', '#DC2626']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.scanGradient}
-            >
-              <View style={styles.scanIconContainer}>
-                <Ionicons name="camera" size={28} color="#FFFFFF" />
-              </View>
-              <View style={styles.scanTextContainer}>
-                <Text style={styles.scanTitle}>Scan with Camera</Text>
-                <Text style={styles.scanSubtitle}>
-                  AI extracts card details instantly
-                </Text>
-              </View>
-              <View style={styles.scanArrowContainer}>
-                <Ionicons name="arrow-forward" size={20} color="#FFFFFF" />
-              </View>
-            </LinearGradient>
-          </TouchableOpacity>
+          <ScanCardButton onPress={handleShowScanner} />
 
           <View style={styles.divider}>
             <View style={styles.dividerLine} />
@@ -456,14 +537,18 @@ export default function AddCard() {
             <FormInput
               label="Card Number"
               value={cardNumber}
-              onChangeText={(val) => handleFieldChange('card_number', val, setCardNumber)}
+              onChangeText={(val) => {
+                const formatted = formatCardNumberInput(val);
+                handleFieldChange('card_number', formatted, setCardNumber);
+              }}
               onBlur={() => handleFieldBlur('card_number')}
               error={fieldErrors.card_number}
               touched={touched.card_number}
-              placeholder="1234567890123"
+              placeholder="1234 5678 9012 3456"
               helperText="Used to generate your scannable barcode"
-              maxLength={30}
-              keyboardType="number-pad"
+              maxLength={35}
+              keyboardType="default"
+              autoCapitalize="characters"
             />
 
             <FormInput
@@ -510,148 +595,128 @@ export default function AddCard() {
             </Button>
           </View>
 
-          <View style={styles.infoCard}>
-            <View style={styles.infoIconContainer}>
-              <Ionicons name="information-circle" size={24} color="#DC2626" />
-            </View>
-            <View style={styles.infoContent}>
-              <Text style={styles.infoTitle}>Pro Tip</Text>
-              <Text style={styles.infoText}>
-                Only the card name is required. Add as much or as little detail as you want.
-              </Text>
-            </View>
-          </View>
+          <InfoCard />
 
           <View style={styles.bottomSpacer} />
         </ScrollView>
       </KeyboardAvoidingView>
 
-      <Modal visible={showScanner} animationType="slide" presentationStyle="fullScreen">
-        <OCRScanner
-          onScanComplete={handleScanComplete}
-          onClose={() => setShowScanner(false)}
-        />
-      </Modal>
+      {showScanner && (
+        <Modal visible={showScanner} animationType="slide" presentationStyle="fullScreen">
+          <OCRScanner
+            onScanComplete={handleScanComplete}
+            onClose={handleCloseScanner}
+          />
+        </Modal>
+      )}
 
-      <Modal
-        visible={showPremiumModal}
-        animationType="fade"
-        transparent={true}
-        onRequestClose={() => setShowPremiumModal(false)}
-      >
-        <View style={styles.modalWrapper}>
-          <Animated.View 
-            style={[
-              styles.modalBackdrop, 
-              { opacity: panResponder.backdropOpacity }
-            ]}
-          >
-            <TouchableOpacity 
-              style={StyleSheet.absoluteFill}
-              activeOpacity={1}
-              onPress={() => setShowPremiumModal(false)}
-            />
-          </Animated.View>
-          
-          <Animated.View 
-            style={[
-              styles.modalContainer,
-              {
-                transform: [{ translateY: panResponder.translateY }]
-              }
-            ]}
-            {...panResponder.panResponder.panHandlers}
-          >
-            <ScrollView 
-              style={styles.modalScrollView}
-              contentContainerStyle={styles.modalContent}
-              showsVerticalScrollIndicator={false}
-              bounces={false}
+      {showPremiumModal && (
+        <Modal
+          visible={showPremiumModal}
+          animationType="fade"
+          transparent={true}
+          onRequestClose={handleClosePremiumModal}
+        >
+          <View style={styles.modalWrapper}>
+            <Animated.View 
+              style={[
+                styles.modalBackdrop, 
+                { opacity: panResponderConfig.backdropOpacity }
+              ]}
             >
-              <View style={styles.dragHandleContainer}>
-                <View style={styles.dragHandle} />
-              </View>
-
               <TouchableOpacity 
-                style={styles.modalCloseButton}
-                onPress={() => setShowPremiumModal(false)}
-                activeOpacity={0.7}
+                style={StyleSheet.absoluteFill}
+                activeOpacity={1}
+                onPress={handleClosePremiumModal}
+              />
+            </Animated.View>
+            
+            <Animated.View 
+              style={[
+                styles.modalContainer,
+                {
+                  transform: [{ translateY: panResponderConfig.translateY }]
+                }
+              ]}
+              {...panResponderConfig.panResponder.panHandlers}
+            >
+              <ScrollView 
+                style={styles.modalScrollView}
+                contentContainerStyle={styles.modalContent}
+                showsVerticalScrollIndicator={false}
+                bounces={false}
               >
-                <Ionicons name="close" size={22} color="#9CA3AF" />
-              </TouchableOpacity>
+                <View style={styles.dragHandleContainer}>
+                  <View style={styles.dragHandle} />
+                </View>
 
-              <View style={styles.premiumBadge}>
-                <Ionicons name="star" size={12} color="#141414" />
-                <Text style={styles.premiumBadgeText}>PREMIUM</Text>
-              </View>
+                <TouchableOpacity 
+                  style={styles.modalCloseButton}
+                  onPress={handleClosePremiumModal}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="close" size={22} color="#9CA3AF" />
+                </TouchableOpacity>
 
-              <Text style={styles.modalTitle}>Unlock Unlimited</Text>
-              <Text style={styles.modalDescription}>
-                Upgrade for unlimited cards and exclusive features.
-              </Text>
+                <View style={styles.premiumBadge}>
+                  <Ionicons name="star" size={12} color="#141414" />
+                  <Text style={styles.premiumBadgeText}>PREMIUM</Text>
+                </View>
 
-              <View style={styles.premiumFeatures}>
-                {[
-                  { icon: 'infinite', title: 'Unlimited Cards' },
-                  { icon: 'location', title: 'Location Alerts' },
-                  { icon: 'color-palette', title: 'Custom Themes' },
-                  { icon: 'flash', title: 'Priority Support' },
-                ].map((feature, index) => (
-                  <View key={index} style={styles.premiumFeatureItem}>
-                    <View style={styles.premiumFeatureIcon}>
-                      <Ionicons name={feature.icon} size={18} color="#9CA3AF" />
+                <Text style={styles.modalTitle}>Unlock Unlimited</Text>
+                <Text style={styles.modalDescription}>
+                  Upgrade for unlimited cards and exclusive features.
+                </Text>
+
+                <PremiumFeaturesList />
+
+                <View style={styles.premiumPricing}>
+                  <View style={styles.pricingOption}>
+                    <Text style={styles.pricingLabel}>Monthly</Text>
+                    <View style={styles.pricingAmount}>
+                      <Text style={styles.priceNumber}>$4.99</Text>
+                      <Text style={styles.pricePeriod}>/mo</Text>
                     </View>
-                    <Text style={styles.premiumFeatureTitle}>{feature.title}</Text>
-                    <Ionicons name="checkmark-circle" size={18} color="#10B981" />
                   </View>
-                ))}
-              </View>
-
-              <View style={styles.premiumPricing}>
-                <View style={styles.pricingOption}>
-                  <Text style={styles.pricingLabel}>Monthly</Text>
-                  <View style={styles.pricingAmount}>
-                    <Text style={styles.priceNumber}>$4.99</Text>
-                    <Text style={styles.pricePeriod}>/mo</Text>
-                  </View>
-                </View>
-                
-                <View style={[styles.pricingOption, styles.pricingOptionBest]}>
-                  <View style={styles.bestValueBadge}>
-                    <Text style={styles.bestValueText}>SAVE $10</Text>
-                  </View>
-                  <Text style={styles.pricingLabel}>Yearly</Text>
-                  <View style={styles.pricingAmount}>
-                    <Text style={styles.priceNumber}>$49.99</Text>
-                    <Text style={styles.pricePeriod}>/yr</Text>
+                  
+                  <View style={[styles.pricingOption, styles.pricingOptionBest]}>
+                    <View style={styles.bestValueBadge}>
+                      <Text style={styles.bestValueText}>SAVE $10</Text>
+                    </View>
+                    <Text style={styles.pricingLabel}>Yearly</Text>
+                    <View style={styles.pricingAmount}>
+                      <Text style={styles.priceNumber}>$49.99</Text>
+                      <Text style={styles.pricePeriod}>/yr</Text>
+                    </View>
                   </View>
                 </View>
-              </View>
 
-              <TouchableOpacity 
-                style={styles.upgradeButton}
-                onPress={() => {
-                  Alert.alert('Premium Coming Soon', 'Premium subscriptions will be available after launch.');
-                  setShowPremiumModal(false);
-                }}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.upgradeButtonText}>Upgrade Now</Text>
-              </TouchableOpacity>
+                <TouchableOpacity 
+                  style={styles.upgradeButton}
+                  onPress={handleUpgradePress}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.upgradeButtonText}>Upgrade Now</Text>
+                </TouchableOpacity>
 
-              <TouchableOpacity 
-                style={styles.laterButton}
-                onPress={() => setShowPremiumModal(false)}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.laterButtonText}>Maybe Later</Text>
-              </TouchableOpacity>
-            </ScrollView>
-          </Animated.View>
-        </View>
-      </Modal>
+                <TouchableOpacity 
+                  style={styles.laterButton}
+                  onPress={handleClosePremiumModal}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.laterButtonText}>Maybe Later</Text>
+                </TouchableOpacity>
+              </ScrollView>
+            </Animated.View>
+          </View>
+        </Modal>
+      )}
     </SafeAreaView>
   );
+}
+
+function formatDateForInput(date) {
+  return date.toISOString().split('T')[0];
 }
 
 const styles = StyleSheet.create({
@@ -669,28 +734,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     paddingTop: 8,
     paddingBottom: 40,
-  },
-
-  // Loading State
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 24,
-  },
-  logoIcon: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: '#DC2626',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 24,
-  },
-  loadingText: {
-    fontSize: 17,
-    fontWeight: '600',
-    color: '#9CA3AF',
   },
 
   // Page Header

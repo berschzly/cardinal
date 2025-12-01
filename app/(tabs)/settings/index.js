@@ -1,6 +1,6 @@
-// Settings Screen - Redesigned to match Dashboard/Add Card
+// Settings Screen - Performance optimized
 
-import { useState } from 'react';
+import { useState, useCallback, memo, useEffect } from 'react';
 import {
   View,
   Text,
@@ -11,280 +11,354 @@ import {
   Alert,
   Linking,
   StatusBar,
+  Image,  // Add this
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../../../lib/supabase';
 import { handleAsync } from '../../../utils/errorHandling';
+import ConfirmationModal from '../../../components/common/ConfirmationModal';
+
+// Memoized components
+const SettingSection = memo(({ title, children }) => (
+  <View style={styles.section}>
+    <Text style={styles.sectionTitle}>{title}</Text>
+    {children}
+  </View>
+));
+
+const SettingRow = memo(({ 
+  icon, 
+  title, 
+  subtitle, 
+  value, 
+  onPress, 
+  showArrow = false,
+  showToggle = false,
+  toggleValue,
+  onToggle,
+  badge,
+  destructive = false
+}) => (
+  <TouchableOpacity
+    style={styles.settingRow}
+    onPress={onPress}
+    disabled={showToggle}
+    activeOpacity={showToggle ? 1 : 0.7}
+    accessible={true}
+    accessibilityLabel={title}
+    accessibilityRole={showToggle ? "switch" : "button"}
+  >
+    <View style={styles.settingLeft}>
+      <View style={styles.settingIconContainer}>
+        <Ionicons name={icon} size={20} color={destructive ? '#DC2626' : '#9CA3AF'} />
+      </View>
+      <View style={styles.settingContent}>
+        <View style={styles.settingTitleRow}>
+          <Text style={[styles.settingTitle, destructive && styles.destructiveText]}>
+            {title}
+          </Text>
+          {badge && (
+            <View style={styles.premiumBadge}>
+              <Ionicons name="star" size={10} color="#141414" />
+              <Text style={styles.premiumBadgeText}>{badge}</Text>
+            </View>
+          )}
+        </View>
+        {subtitle && (
+          <Text style={styles.settingSubtitle}>{subtitle}</Text>
+        )}
+      </View>
+    </View>
+
+    <View style={styles.settingRight}>
+      {value && <Text style={styles.settingValue}>{value}</Text>}
+      {showToggle && (
+        <Switch
+          value={toggleValue}
+          onValueChange={onToggle}
+          trackColor={{ false: '#2A2A2A', true: '#DC262640' }}
+          thumbColor={toggleValue ? '#DC2626' : '#6B7280'}
+          ios_backgroundColor="#2A2A2A"
+        />
+      )}
+      {showArrow && (
+        <Ionicons name="chevron-forward" size={20} color="#6B7280" />
+      )}
+    </View>
+  </TouchableOpacity>
+));
+
+const Divider = memo(() => <View style={styles.divider} />);
+
+const PremiumBanner = memo(({ onPress }) => (
+  <TouchableOpacity
+    style={styles.premiumBanner}
+    activeOpacity={0.9}
+    onPress={onPress}
+    accessible={true}
+    accessibilityLabel="Upgrade to premium"
+    accessibilityRole="button"
+  >
+    <View style={styles.premiumBannerContent}>
+      <View style={styles.premiumBannerIcon}>
+        <Ionicons name="star" size={24} color="#F59E0B" />
+      </View>
+      <View style={styles.premiumBannerText}>
+        <Text style={styles.premiumBannerTitle}>Upgrade to Premium</Text>
+        <Text style={styles.premiumBannerSubtitle}>
+          Unlimited cards, location alerts & more
+        </Text>
+      </View>
+    </View>
+    <Ionicons name="arrow-forward" size={20} color="#FFFFFF" />
+  </TouchableOpacity>
+));
+
+const Footer = memo(() => (
+  <View style={styles.footer}>
+    <View style={styles.footerLogo}>
+      <Image 
+        source={require('../../../assets/images/logo.png')} 
+        style={styles.footerLogoImage}
+        resizeMode="contain"
+      />
+    </View>
+    <Text style={styles.footerTitle}>Cardinal</Text>
+    <Text style={styles.footerText}>
+      Never lose a gift card again
+    </Text>
+    <Text style={styles.footerCopyright}>
+      © 2024 Cardinal. All rights reserved.
+    </Text>
+  </View>
+));
 
 export default function Settings() {
   const router = useRouter();
+  const [userEmail, setUserEmail] = useState('');
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [locationAlertsEnabled, setLocationAlertsEnabled] = useState(false);
   const [expirationAlerts, setExpirationAlerts] = useState(true);
   const [biometricEnabled, setBiometricEnabled] = useState(false);
   const [isPremium, setIsPremium] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [showSignOutModal, setShowSignOutModal] = useState(false);
+  const [showDeleteDataModal, setShowDeleteDataModal] = useState(false);
+  const [showDeleteAccountModal, setShowDeleteAccountModal] = useState(false);
+  const [modalLoading, setModalLoading] = useState(false);
 
-  // Sign Out Function
-  async function handleSignOut() {
-    Alert.alert(
-      'Sign Out',
-      'Are you sure you want to sign out?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { 
-          text: 'Sign Out', 
-          style: 'destructive',
-          onPress: async () => {
-            const result = await handleAsync(
-              async () => {
-                const { error } = await supabase.auth.signOut();
-                if (error) throw error;
-                return { data: { success: true } };
-              },
-              { showDefaultError: false }
-            );
+  useEffect(() => {
+    loadUserData();
+  }, []);
 
-            if (result.error) {
-              Alert.alert('Sign Out Failed', result.error);
-            } else {
-              // Navigation will be handled by auth listener in _layout.js
-              router.replace('/(auth)/welcome');
-            }
-          }
+  const loadUserData = useCallback(async () => {
+    const result = await handleAsync(
+      async () => {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          setUserEmail(user.email || 'user@example.com');
         }
-      ]
-    );
-  }
-
-  // Delete All Data Function
-  async function handleDeleteData() {
-    Alert.alert(
-      'Delete All Data',
-      'This action cannot be undone. All your cards and data will be permanently deleted. Your account will remain active.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { 
-          text: 'Delete', 
-          style: 'destructive',
-          onPress: async () => {
-            // Second confirmation
-            Alert.alert(
-              'Are You Sure?',
-              'This will delete all your cards permanently. Type DELETE to confirm.',
-              [
-                { text: 'Cancel', style: 'cancel' },
-                {
-                  text: 'Delete Everything',
-                  style: 'destructive',
-                  onPress: async () => {
-                    const result = await handleAsync(
-                      async () => {
-                        const { data: { user } } = await supabase.auth.getUser();
-                        
-                        // Delete all cards
-                        const { error: cardsError } = await supabase
-                          .from('cards')
-                          .delete()
-                          .eq('user_id', user.id);
-                        
-                        if (cardsError) throw cardsError;
-
-                        // Reset user settings to defaults
-                        const { error: settingsError } = await supabase
-                          .from('user_settings')
-                          .update({
-                            push_notifications: true,
-                            email_notifications: true,
-                            expiration_alerts: true,
-                            expiring_30_days: true,
-                            expiring_14_days: true,
-                            expiring_7_days: true,
-                            expiring_1_day: true,
-                            usage_reminders: true,
-                            unused_card_reminders: true,
-                            location_alerts: false,
-                            location_radius: '0.5',
-                            marketing_emails: false,
-                          })
-                          .eq('user_id', user.id);
-
-                        if (settingsError) throw settingsError;
-
-                        return { data: { success: true } };
-                      },
-                      { showDefaultError: false }
-                    );
-
-                    if (result.error) {
-                      Alert.alert('Delete Failed', result.error);
-                    } else {
-                      Alert.alert(
-                        'Data Deleted',
-                        'All your cards have been permanently deleted.',
-                        [{ text: 'OK', onPress: () => router.push('/(tabs)') }]
-                      );
-                    }
-                  }
-                }
-              ]
-            );
-          }
+        
+        // Load user settings if you have them
+        const { data: settings } = await supabase
+          .from('user_settings')
+          .select('*')
+          .eq('user_id', user.id)
+          .single();
+        
+        if (settings) {
+          setNotificationsEnabled(settings.push_notifications ?? true);
+          setExpirationAlerts(settings.expiration_alerts ?? true);
+          setLocationAlertsEnabled(settings.location_alerts ?? false);
+          setIsPremium(settings.is_premium ?? false);
         }
-      ]
+        
+        return { data: { success: true } };
+      },
+      { showDefaultError: false }
     );
-  }
+    
+    setLoading(false);
+  }, []);
 
-  // Delete Account Function
-  async function handleDeleteAccount() {
-    Alert.alert(
-      'Delete Account',
-      'This action cannot be undone. Your account and all associated data will be permanently deleted.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { 
-          text: 'Delete', 
-          style: 'destructive',
-          onPress: async () => {
-            // Second confirmation
-            Alert.alert(
-              'Final Confirmation',
-              'Are you absolutely sure? This will permanently delete your account and all data.',
-              [
-                { text: 'Cancel', style: 'cancel' },
-                {
-                  text: 'Delete My Account',
-                  style: 'destructive',
-                  onPress: async () => {
-                    const result = await handleAsync(
-                      async () => {
-                        const { data: { user } } = await supabase.auth.getUser();
-                        
-                        // Delete all cards
-                        await supabase
-                          .from('cards')
-                          .delete()
-                          .eq('user_id', user.id);
+  const handleSignOut = useCallback(() => {
+    setShowSignOutModal(true);
+  }, []);
 
-                        // Delete user settings
-                        await supabase
-                          .from('user_settings')
-                          .delete()
-                          .eq('user_id', user.id);
+  const confirmSignOut = useCallback(async () => {
+    setModalLoading(true);
+    const result = await handleAsync(
+      async () => {
+        const { error } = await supabase.auth.signOut();
+        if (error) throw error;
+        return { data: { success: true } };
+      },
+      { showDefaultError: false }
+    );
+    setModalLoading(false);
 
-                        // Delete the auth user (this will cascade delete everything)
-                        const { error } = await supabase.auth.admin.deleteUser(user.id);
-                        
-                        // If admin.deleteUser doesn't work (requires service role key),
-                        // we can just sign out and let the user know to contact support
-                        if (error && error.message.includes('service_role')) {
-                          // Sign out instead
-                          await supabase.auth.signOut();
-                          Alert.alert(
-                            'Account Deletion Requested',
-                            'Your data has been cleared. Please contact support@usecardinal.app to complete account deletion.',
-                            [{ text: 'OK', onPress: () => router.replace('/(auth)/welcome') }]
-                          );
-                          return { data: { success: true } };
-                        }
+    if (result.error) {
+      setShowSignOutModal(false);
+      Alert.alert('Sign Out Failed', result.error);
+    } else {
+      router.replace('/(auth)/welcome');
+    }
+  }, [router]);
 
-                        if (error) throw error;
+  const handleDeleteData = useCallback(() => {
+    setShowDeleteDataModal(true);
+  }, []);
 
-                        return { data: { success: true } };
-                      },
-                      { showDefaultError: false }
-                    );
+  const confirmDeleteData = useCallback(async () => {
+    setModalLoading(true);
+    const result = await handleAsync(
+      async () => {
+        const { data: { user } } = await supabase.auth.getUser();
+        
+        const { error: cardsError } = await supabase
+          .from('cards')
+          .delete()
+          .eq('user_id', user.id);
+        
+        if (cardsError) throw cardsError;
 
-                    if (result.error) {
-                      Alert.alert('Deletion Failed', result.error);
-                    } else {
-                      router.replace('/(auth)/welcome');
-                    }
-                  }
-                }
-              ]
-            );
-          }
+        const { error: settingsError } = await supabase
+          .from('user_settings')
+          .update({
+            push_notifications: true,
+            email_notifications: true,
+            expiration_alerts: true,
+            expiring_30_days: true,
+            expiring_14_days: true,
+            expiring_7_days: true,
+            expiring_1_day: true,
+            usage_reminders: true,
+            unused_card_reminders: true,
+            location_alerts: false,
+            location_radius: '0.5',
+            marketing_emails: false,
+          })
+          .eq('user_id', user.id);
+
+        if (settingsError) throw settingsError;
+
+        return { data: { success: true } };
+      },
+      { showDefaultError: false }
+    );
+    setModalLoading(false);
+
+    if (result.error) {
+      setShowDeleteDataModal(false);
+      Alert.alert('Delete Failed', result.error);
+    } else {
+      setShowDeleteDataModal(false);
+      Alert.alert(
+        'Data Deleted',
+        'All your cards have been permanently deleted.',
+        [{ text: 'OK', onPress: () => router.push('/(tabs)') }]
+      );
+    }
+  }, [router]);
+
+  const handleDeleteAccount = useCallback(() => {
+    setShowDeleteAccountModal(true);
+  }, []);
+
+  const confirmDeleteAccount = useCallback(async () => {
+    setModalLoading(true);
+    const result = await handleAsync(
+      async () => {
+        const { data: { user } } = await supabase.auth.getUser();
+        
+        await supabase
+          .from('cards')
+          .delete()
+          .eq('user_id', user.id);
+
+        await supabase
+          .from('user_settings')
+          .delete()
+          .eq('user_id', user.id);
+
+        const { error } = await supabase.auth.admin.deleteUser(user.id);
+        
+        if (error && error.message.includes('service_role')) {
+          await supabase.auth.signOut();
+          Alert.alert(
+            'Account Deletion Requested',
+            'Your data has been cleared. Please contact support@usecardinal.app to complete account deletion.',
+            [{ text: 'OK', onPress: () => router.replace('/(auth)/welcome') }]
+          );
+          return { data: { success: true } };
         }
-      ]
+
+        if (error) throw error;
+
+        return { data: { success: true } };
+      },
+      { showDefaultError: false }
     );
-  }
+    setModalLoading(false);
 
-  const SettingSection = ({ title, children }) => (
-    <View style={styles.section}>
-      <Text style={styles.sectionTitle}>{title}</Text>
-      {children}
-    </View>
-  );
+    if (result.error) {
+      setShowDeleteAccountModal(false);
+      Alert.alert('Deletion Failed', result.error);
+    } else {
+      router.replace('/(auth)/welcome');
+    }
+  }, [router]);
 
-  const SettingRow = ({ 
-    icon, 
-    title, 
-    subtitle, 
-    value, 
-    onPress, 
-    showArrow = false,
-    showToggle = false,
-    toggleValue,
-    onToggle,
-    badge,
-    destructive = false
-  }) => (
-    <TouchableOpacity
-      style={styles.settingRow}
-      onPress={onPress}
-      disabled={showToggle}
-      activeOpacity={showToggle ? 1 : 0.7}
-      accessible={true}
-      accessibilityLabel={title}
-      accessibilityRole={showToggle ? "switch" : "button"}
-    >
-      <View style={styles.settingLeft}>
-        <View style={styles.settingIconContainer}>
-          <Ionicons name={icon} size={20} color={destructive ? '#DC2626' : '#9CA3AF'} />
-        </View>
-        <View style={styles.settingContent}>
-          <View style={styles.settingTitleRow}>
-            <Text style={[styles.settingTitle, destructive && styles.destructiveText]}>
-              {title}
-            </Text>
-            {badge && (
-              <View style={styles.premiumBadge}>
-                <Ionicons name="star" size={10} color="#141414" />
-                <Text style={styles.premiumBadgeText}>{badge}</Text>
-              </View>
-            )}
-          </View>
-          {subtitle && (
-            <Text style={styles.settingSubtitle}>{subtitle}</Text>
-          )}
-        </View>
-      </View>
+  const handlePremiumPress = useCallback(() => {
+    Alert.alert('Premium Coming Soon', 'Premium subscriptions will be available after launch.');
+  }, []);
 
-      <View style={styles.settingRight}>
-        {value && <Text style={styles.settingValue}>{value}</Text>}
-        {showToggle && (
-          <Switch
-            value={toggleValue}
-            onValueChange={onToggle}
-            trackColor={{ false: '#2A2A2A', true: '#DC262640' }}
-            thumbColor={toggleValue ? '#DC2626' : '#6B7280'}
-            ios_backgroundColor="#2A2A2A"
-          />
-        )}
-        {showArrow && (
-          <Ionicons name="chevron-forward" size={20} color="#6B7280" />
-        )}
-      </View>
-    </TouchableOpacity>
-  );
+  const handleEmailPress = useCallback(() => {
+    router.push('/settings/email-preferences');
+  }, [router]);
+
+  const handlePasswordPress = useCallback(() => {
+    router.push('/settings/change-password');
+  }, [router]);
+
+  const handleNotificationPrefsPress = useCallback(() => {
+    router.push('/settings/notification-settings');
+  }, [router]);
+
+  const handleHelpPress = useCallback(() => {
+    Linking.openURL('mailto:support@usecardinal.app');
+  }, []);
+
+  const handleRatePress = useCallback(() => {
+    Alert.alert('Rate Us', 'Thank you for your support!');
+  }, []);
+
+  const handleSharePress = useCallback(() => {
+    Alert.alert('Share', 'Share Cardinal with friends!');
+  }, []);
+
+  const handleTermsPress = useCallback(() => {
+    Linking.openURL('https://usecardinal.app/terms');
+  }, []);
+
+  const handlePrivacyPress = useCallback(() => {
+    Linking.openURL('https://usecardinal.app/privacy');
+  }, []);
+
+  const handleLocationToggle = useCallback((value) => {
+    if (!isPremium) {
+      Alert.alert('Premium Feature', 'Location alerts are only available with Premium.');
+    } else {
+      setLocationAlertsEnabled(value);
+    }
+  }, [isPremium]);
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <StatusBar barStyle="light-content" backgroundColor="#141414" />
       
-      {/* Page Header */}
       <View style={styles.pageHeader}>
         <Text style={styles.pageTitle}>Settings</Text>
       </View>
@@ -294,52 +368,27 @@ export default function Settings() {
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
       >
-        {/* Premium Banner */}
-        {!isPremium && (
-          <TouchableOpacity
-            style={styles.premiumBanner}
-            activeOpacity={0.9}
-            onPress={() => Alert.alert('Premium Coming Soon', 'Premium subscriptions will be available after launch.')}
-            accessible={true}
-            accessibilityLabel="Upgrade to premium"
-            accessibilityRole="button"
-          >
-            <View style={styles.premiumBannerContent}>
-              <View style={styles.premiumBannerIcon}>
-                <Ionicons name="star" size={24} color="#F59E0B" />
-              </View>
-              <View style={styles.premiumBannerText}>
-                <Text style={styles.premiumBannerTitle}>Upgrade to Premium</Text>
-                <Text style={styles.premiumBannerSubtitle}>
-                  Unlimited cards, location alerts & more
-                </Text>
-              </View>
-            </View>
-            <Ionicons name="arrow-forward" size={20} color="#FFFFFF" />
-          </TouchableOpacity>
-        )}
+        {!isPremium && <PremiumBanner onPress={handlePremiumPress} />}
 
-        {/* Account Section */}
         <SettingSection title="Account">
           <View style={styles.settingsCard}>
             <SettingRow
               icon="mail-outline"
               title="Email"
-              value="user@example.com"
+              value={userEmail}
               showArrow
-              onPress={() => router.push('/settings/email-preferences')}
+              onPress={handleEmailPress}
             />
-            <View style={styles.divider} />
+            <Divider />
             <SettingRow
               icon="key-outline"
               title="Change Password"
               showArrow
-              onPress={() => router.push('/settings/change-password')}
+              onPress={handlePasswordPress}
             />
           </View>
         </SettingSection>
 
-        {/* Notifications Section */}
         <SettingSection title="Notifications">
           <View style={styles.settingsCard}>
             <SettingRow
@@ -350,7 +399,7 @@ export default function Settings() {
               toggleValue={notificationsEnabled}
               onToggle={setNotificationsEnabled}
             />
-            <View style={styles.divider} />
+            <Divider />
             <SettingRow
               icon="time-outline"
               title="Expiration Alerts"
@@ -359,7 +408,7 @@ export default function Settings() {
               toggleValue={expirationAlerts}
               onToggle={setExpirationAlerts}
             />
-            <View style={styles.divider} />
+            <Divider />
             <SettingRow
               icon="location-outline"
               title="Location Alerts"
@@ -367,52 +416,44 @@ export default function Settings() {
               badge="PRO"
               showToggle
               toggleValue={locationAlertsEnabled}
-              onToggle={(value) => {
-                if (!isPremium) {
-                  Alert.alert('Premium Feature', 'Location alerts are only available with Premium.');
-                } else {
-                  setLocationAlertsEnabled(value);
-                }
-              }}
+              onToggle={handleLocationToggle}
             />
-            <View style={styles.divider} />
+            <Divider />
             <SettingRow
               icon="settings-outline"
               title="Notification Preferences"
               subtitle="Customize when and how you're notified"
               showArrow
-              onPress={() => router.push('/settings/notification-settings')}
+              onPress={handleNotificationPrefsPress}
             />
           </View>
         </SettingSection>
 
-        {/* App Section */}
         <SettingSection title="App">
           <View style={styles.settingsCard}>
             <SettingRow
               icon="help-circle-outline"
               title="Help & Support"
               showArrow
-              onPress={() => Linking.openURL('mailto:support@usecardinal.app')}
+              onPress={handleHelpPress}
             />
-            <View style={styles.divider} />
+            <Divider />
             <SettingRow
               icon="star-outline"
               title="Rate Cardinal"
               showArrow
-              onPress={() => Alert.alert('Rate Us', 'Thank you for your support!')}
+              onPress={handleRatePress}
             />
-            <View style={styles.divider} />
+            <Divider />
             <SettingRow
               icon="share-outline"
               title="Share Cardinal"
               showArrow
-              onPress={() => Alert.alert('Share', 'Share Cardinal with friends!')}
+              onPress={handleSharePress}
             />
           </View>
         </SettingSection>
 
-        {/* About Section */}
         <SettingSection title="About">
           <View style={styles.settingsCard}>
             <SettingRow
@@ -420,24 +461,23 @@ export default function Settings() {
               title="Version"
               value="1.0.0"
             />
-            <View style={styles.divider} />
+            <Divider />
             <SettingRow
               icon="document-outline"
               title="Terms of Service"
               showArrow
-              onPress={() => Linking.openURL('https://usecardinal.app/terms')}
+              onPress={handleTermsPress}
             />
-            <View style={styles.divider} />
+            <Divider />
             <SettingRow
               icon="shield-outline"
               title="Privacy Policy"
               showArrow
-              onPress={() => Linking.openURL('https://usecardinal.app/privacy')}
+              onPress={handlePrivacyPress}
             />
           </View>
         </SettingSection>
 
-        {/* Danger Zone */}
         <SettingSection title="Danger Zone">
           <View style={styles.settingsCard}>
             <SettingRow
@@ -447,7 +487,7 @@ export default function Settings() {
               showArrow
               onPress={handleSignOut}
             />
-            <View style={styles.divider} />
+            <Divider />
             <SettingRow
               icon="trash-outline"
               title="Delete Data"
@@ -456,7 +496,7 @@ export default function Settings() {
               showArrow
               onPress={handleDeleteData}
             />
-            <View style={styles.divider} />
+            <Divider />
             <SettingRow
               icon="close-circle-outline"
               title="Delete Account"
@@ -468,22 +508,54 @@ export default function Settings() {
           </View>
         </SettingSection>
 
-        {/* Footer */}
-        <View style={styles.footer}>
-          <View style={styles.footerLogo}>
-            <Ionicons name="card" size={32} color="#FFFFFF" />
-          </View>
-          <Text style={styles.footerTitle}>Cardinal</Text>
-          <Text style={styles.footerText}>
-            Never lose a gift card again
-          </Text>
-          <Text style={styles.footerCopyright}>
-            © 2024 Cardinal. All rights reserved.
-          </Text>
-        </View>
+        <Footer />
 
         <View style={styles.bottomSpacer} />
       </ScrollView>
+      {/* Sign Out Modal */}
+      <ConfirmationModal
+        visible={showSignOutModal}
+        onClose={() => setShowSignOutModal(false)}
+        onConfirm={confirmSignOut}
+        title="Sign Out"
+        message="Are you sure you want to sign out of your account?"
+        confirmText="Sign Out"
+        cancelText="Cancel"
+        confirmDestructive={true}
+        icon="log-out-outline"
+        iconColor="#F59E0B"
+        loading={modalLoading}
+      />
+
+      {/* Delete Data Modal */}
+      <ConfirmationModal
+        visible={showDeleteDataModal}
+        onClose={() => setShowDeleteDataModal(false)}
+        onConfirm={confirmDeleteData}
+        title="Delete All Data"
+        message="This will permanently delete all your cards and data. Your account will remain active. This action cannot be undone."
+        confirmText="Delete Data"
+        cancelText="Cancel"
+        confirmDestructive={true}
+        icon="trash-outline"
+        iconColor="#DC2626"
+        loading={modalLoading}
+      />
+
+      {/* Delete Account Modal */}
+      <ConfirmationModal
+        visible={showDeleteAccountModal}
+        onClose={() => setShowDeleteAccountModal(false)}
+        onConfirm={confirmDeleteAccount}
+        title="Delete Account"
+        message="This will permanently delete your account and all associated data. This action cannot be undone."
+        confirmText="Delete Account"
+        cancelText="Cancel"
+        confirmDestructive={true}
+        icon="close-circle-outline"
+        iconColor="#DC2626"
+        loading={modalLoading}
+      />
     </SafeAreaView>
   );
 }
@@ -694,5 +766,10 @@ const styles = StyleSheet.create({
 
   bottomSpacer: {
     height: 40,
+  },
+  footerLogoImage: {
+    width: 48,
+    height: 48,
+    borderRadius: 25,
   },
 });

@@ -1,7 +1,7 @@
 // app/(tabs)/settings/email-preferences.js
-// Email Preferences Screen
+// Email Preferences Screen - Optimized
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, memo } from 'react';
 import {
   View,
   Text,
@@ -20,6 +20,47 @@ import { supabase } from '../../../lib/supabase';
 import { handleAsync } from '../../../utils/errorHandling';
 import { isValidEmail } from '../../../utils/validation';
 
+const EmailCard = memo(({ email }) => (
+  <View style={styles.emailCard}>
+    <View style={styles.emailIconContainer}>
+      <Ionicons name="mail" size={24} color="#DC2626" />
+    </View>
+    <View style={styles.emailContent}>
+      <Text style={styles.emailLabel}>Email Address</Text>
+      <Text style={styles.emailValue}>{email}</Text>
+      <Text style={styles.emailStatus}>
+        <Ionicons name="checkmark-circle" size={14} color="#10B981" />
+        {' '}Verified
+      </Text>
+    </View>
+  </View>
+));
+
+const InfoCard = memo(() => (
+  <View style={styles.infoCard}>
+    <View style={styles.infoIconContainer}>
+      <Ionicons name="information-circle" size={24} color="#3B82F6" />
+    </View>
+    <View style={styles.infoContent}>
+      <Text style={styles.infoTitle}>Important Note</Text>
+      <Text style={styles.infoText}>
+        Changing your email will require verification. You'll receive a confirmation email at your new address.
+      </Text>
+    </View>
+  </View>
+));
+
+const NotificationsCard = memo(({ email }) => (
+  <View style={styles.notificationsCard}>
+    <Text style={styles.notificationsTitle}>
+      Receive updates via email
+    </Text>
+    <Text style={styles.notificationsDescription}>
+      We'll send important updates, security alerts, and account notifications to {email}
+    </Text>
+  </View>
+));
+
 export default function EmailPreferences() {
   const router = useRouter();
   const [email, setEmail] = useState('');
@@ -32,7 +73,7 @@ export default function EmailPreferences() {
     loadCurrentEmail();
   }, []);
 
-  async function loadCurrentEmail() {
+  const loadCurrentEmail = useCallback(async () => {
     const result = await handleAsync(
       async () => {
         const { data: { user } } = await supabase.auth.getUser();
@@ -45,15 +86,14 @@ export default function EmailPreferences() {
       setEmail(result.data);
     }
     setInitialLoading(false);
-  }
+  }, []);
 
-  const handleUpdateEmail = async () => {
+  const handleUpdateEmail = useCallback(async () => {
     if (!newEmail) {
       Alert.alert('Error', 'Please enter a new email address');
       return;
     }
 
-    // Validate email
     const validation = isValidEmail(newEmail);
     if (!validation.isValid) {
       Alert.alert('Invalid Email', validation.error);
@@ -90,7 +130,20 @@ export default function EmailPreferences() {
       'Verification Required', 
       'A confirmation email has been sent to your new address. Please verify it to complete the change.'
     );
-  };
+  }, [newEmail, email]);
+
+  const handleStartEditing = useCallback(() => {
+    setIsEditing(true);
+  }, []);
+
+  const handleCancelEditing = useCallback(() => {
+    setNewEmail('');
+    setIsEditing(false);
+  }, []);
+
+  const handleBack = useCallback(() => {
+    router.back();
+  }, [router]);
 
   if (initialLoading) {
     return (
@@ -107,11 +160,10 @@ export default function EmailPreferences() {
     <SafeAreaView style={styles.container} edges={['top']}>
       <StatusBar barStyle="light-content" backgroundColor="#141414" />
       
-      {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity
           style={styles.backButton}
-          onPress={() => router.back()}
+          onPress={handleBack}
           accessible={true}
           accessibilityLabel="Go back"
           accessibilityRole="button"
@@ -127,30 +179,16 @@ export default function EmailPreferences() {
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
       >
-        {/* Current Email Section */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Current Email</Text>
-          <View style={styles.emailCard}>
-            <View style={styles.emailIconContainer}>
-              <Ionicons name="mail" size={24} color="#DC2626" />
-            </View>
-            <View style={styles.emailContent}>
-              <Text style={styles.emailLabel}>Email Address</Text>
-              <Text style={styles.emailValue}>{email}</Text>
-              <Text style={styles.emailStatus}>
-                <Ionicons name="checkmark-circle" size={14} color="#10B981" />
-                {' '}Verified
-              </Text>
-            </View>
-          </View>
+          <EmailCard email={email} />
         </View>
 
-        {/* Change Email Section */}
         {!isEditing ? (
           <View style={styles.section}>
             <TouchableOpacity
               style={styles.changeButton}
-              onPress={() => setIsEditing(true)}
+              onPress={handleStartEditing}
               activeOpacity={0.8}
               accessible={true}
               accessibilityLabel="Change email address"
@@ -182,10 +220,7 @@ export default function EmailPreferences() {
             <View style={styles.buttonRow}>
               <TouchableOpacity
                 style={styles.cancelButton}
-                onPress={() => {
-                  setNewEmail('');
-                  setIsEditing(false);
-                }}
+                onPress={handleCancelEditing}
                 disabled={loading}
                 accessible={true}
                 accessibilityLabel="Cancel"
@@ -213,30 +248,11 @@ export default function EmailPreferences() {
           </View>
         )}
 
-        {/* Info Card */}
-        <View style={styles.infoCard}>
-          <View style={styles.infoIconContainer}>
-            <Ionicons name="information-circle" size={24} color="#3B82F6" />
-          </View>
-          <View style={styles.infoContent}>
-            <Text style={styles.infoTitle}>Important Note</Text>
-            <Text style={styles.infoText}>
-              Changing your email will require verification. You'll receive a confirmation email at your new address.
-            </Text>
-          </View>
-        </View>
+        <InfoCard />
 
-        {/* Email Notifications Section */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Email Notifications</Text>
-          <View style={styles.notificationsCard}>
-            <Text style={styles.notificationsTitle}>
-              Receive updates via email
-            </Text>
-            <Text style={styles.notificationsDescription}>
-              We'll send important updates, security alerts, and account notifications to {email}
-            </Text>
-          </View>
+          <NotificationsCard email={email} />
         </View>
 
         <View style={styles.bottomSpacer} />

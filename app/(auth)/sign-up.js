@@ -1,4 +1,18 @@
-// Registration screen - Coinbase inspired design
+/**
+ * Sign Up Screen
+ * 
+ * Handles new user registration with email verification.
+ * Integrates with Supabase Auth for secure account creation.
+ * 
+ * Features:
+ * - Email format validation
+ * - Password strength requirements (minimum 6 characters)
+ * - Password confirmation matching
+ * - Loading state during registration
+ * - Email verification flow
+ * - Error handling with user feedback
+ * - Keyboard-aware scrolling
+ */
 
 import { useState } from 'react';
 import {
@@ -11,12 +25,12 @@ import {
   Platform,
   ScrollView,
   Alert,
-  Image,  // Add this
+  Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { signUp } from '../../lib/supabase';
-import logo from '../../assets/images/logo.png'
+import logo from '../../assets/images/logo.png';
 
 export default function SignUp() {
   const [email, setEmail] = useState('');
@@ -25,22 +39,31 @@ export default function SignUp() {
   const [loading, setLoading] = useState(false);
   const router = useRouter();
 
+  /**
+   * Validates registration form inputs
+   * Checks for required fields, password strength, matching passwords, and email format
+   * @returns {boolean} - True if validation passes, false otherwise
+   */
   function validateForm() {
+    // Check for empty fields
     if (!email || !password || !confirmPassword) {
       Alert.alert('Error', 'Please fill in all fields');
       return false;
     }
 
+    // Validate password length
     if (password.length < 6) {
       Alert.alert('Error', 'Password must be at least 6 characters');
       return false;
     }
 
+    // Verify passwords match
     if (password !== confirmPassword) {
       Alert.alert('Error', 'Passwords do not match');
       return false;
     }
 
+    // Validate email format
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
       Alert.alert('Error', 'Please enter a valid email address');
@@ -50,14 +73,19 @@ export default function SignUp() {
     return true;
   }
 
+  /**
+   * Handles user registration
+   * Validates form and creates new account via Supabase
+   */
   async function handleSignUp() {
     if (!validateForm()) return;
 
+    // Attempt account creation
     setLoading(true);
-    
     const { data, error: signUpError } = await signUp(email, password);
     setLoading(false);
 
+    // Handle registration response
     if (signUpError) {
       Alert.alert('Error', signUpError.message || 'Failed to create account');
     } else {
@@ -81,7 +109,7 @@ export default function SignUp() {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          {/* Header */}
+          {/* Header with logo and close button */}
           <View style={styles.header}>
             <View style={styles.logoContainer}>
               <View style={styles.logo}>
@@ -95,12 +123,13 @@ export default function SignUp() {
             <TouchableOpacity 
               style={styles.closeButton}
               onPress={() => router.push('/(auth)/welcome')}
+              accessibilityLabel="Close and return to welcome"
             >
               <Text style={styles.closeIcon}>✕</Text>
             </TouchableOpacity>
           </View>
 
-          {/* Title Section */}
+          {/* Title and description */}
           <View style={styles.titleSection}>
             <Text style={styles.title}>Create your account</Text>
             <Text style={styles.subtitle}>
@@ -108,8 +137,9 @@ export default function SignUp() {
             </Text>
           </View>
 
-          {/* Form */}
+          {/* Registration form */}
           <View style={styles.form}>
+            {/* Email input */}
             <View style={styles.inputGroup}>
               <Text style={styles.label}>Email</Text>
               <TextInput
@@ -121,9 +151,11 @@ export default function SignUp() {
                 keyboardType="email-address"
                 autoCapitalize="none"
                 autoComplete="email"
+                editable={!loading}
               />
             </View>
 
+            {/* Password input */}
             <View style={styles.inputGroup}>
               <Text style={styles.label}>Password</Text>
               <TextInput
@@ -134,9 +166,11 @@ export default function SignUp() {
                 placeholderTextColor="#9CA3AF"
                 secureTextEntry
                 autoCapitalize="none"
+                editable={!loading}
               />
             </View>
 
+            {/* Password confirmation input */}
             <View style={styles.inputGroup}>
               <Text style={styles.label}>Confirm Password</Text>
               <TextInput
@@ -147,26 +181,31 @@ export default function SignUp() {
                 placeholderTextColor="#9CA3AF"
                 secureTextEntry
                 autoCapitalize="none"
+                editable={!loading}
               />
             </View>
           </View>
 
-          {/* Continue Button */}
+          {/* Submit button */}
           <TouchableOpacity 
             style={[styles.continueButton, loading && styles.continueButtonDisabled]}
             onPress={handleSignUp}
             disabled={loading}
             activeOpacity={0.8}
+            accessibilityLabel="Create account"
           >
             <Text style={styles.continueButtonText}>
               {loading ? 'Creating Account...' : 'Continue'}
             </Text>
           </TouchableOpacity>
 
-          {/* Sign In Link */}
+          {/* Navigation to sign in */}
           <View style={styles.footer}>
             <Text style={styles.footerText}>Already have an account? </Text>
-            <TouchableOpacity onPress={() => router.push('/(auth)/sign-in')}>
+            <TouchableOpacity 
+              onPress={() => router.push('/(auth)/sign-in')}
+              accessibilityLabel="Sign in to existing account"
+            >
               <Text style={styles.footerLink}>Sign in</Text>
             </TouchableOpacity>
           </View>

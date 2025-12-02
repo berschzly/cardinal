@@ -1,3 +1,22 @@
+/**
+ * Welcome Screen (Onboarding)
+ * 
+ * Entry point for new users featuring a swipeable onboarding carousel.
+ * Showcases key app features through visual illustrations and descriptive text.
+ * 
+ * Features:
+ * - Three-page horizontal carousel with pagination
+ * - Custom illustrations for each feature
+ * - Smooth scrolling with page indicators
+ * - Navigation to sign-up and sign-in flows
+ * - Status bar configuration for dark theme
+ * 
+ * Pages:
+ * 1. Gift card storage and organization
+ * 2. Smart notifications and alerts
+ * 3. Quick barcode scanning at checkout
+ */
+
 import { View, Text, StyleSheet, TouchableOpacity, Dimensions, ScrollView, StatusBar } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useState, useRef } from 'react';
@@ -9,6 +28,7 @@ export default function Welcome() {
   const scrollViewRef = useRef(null);
   const [currentPage, setCurrentPage] = useState(0);
 
+  // Onboarding content configuration
   const onboardingPages = [
     {
       title: "Never lose a gift card again",
@@ -27,12 +47,19 @@ export default function Welcome() {
     }
   ];
 
+  /**
+   * Handles scroll events to update current page indicator
+   */
   const handleScroll = (event) => {
     const offsetX = event.nativeEvent.contentOffset.x;
     const page = Math.round(offsetX / SCREEN_WIDTH);
     setCurrentPage(page);
   };
 
+  /**
+   * Programmatically scrolls to a specific page
+   * @param {number} pageIndex - Index of page to scroll to
+   */
   const scrollToPage = (pageIndex) => {
     scrollViewRef.current?.scrollTo({
       x: pageIndex * SCREEN_WIDTH,
@@ -40,6 +67,11 @@ export default function Welcome() {
     });
   };
 
+  /**
+   * Renders the appropriate illustration component based on type
+   * @param {string} type - Illustration type identifier
+   * @returns {JSX.Element} Illustration component
+   */
   const renderIllustration = (type) => {
     switch (type) {
       case 'cards':
@@ -55,10 +87,10 @@ export default function Welcome() {
 
   return (
     <View style={styles.container}>
-      {/* Status Bar Configuration */}
+      {/* Status bar styling for dark theme */}
       <StatusBar barStyle="light-content" backgroundColor="#141414ff" />
       
-      {/* Scrollable Pages */}
+      {/* Horizontal scrolling carousel */}
       <ScrollView
         ref={scrollViewRef}
         horizontal
@@ -70,21 +102,21 @@ export default function Welcome() {
       >
         {onboardingPages.map((page, index) => (
           <View key={index} style={styles.page}>
-            {/* Illustration */}
+            {/* Feature illustration */}
             <View style={styles.illustrationContainer}>
               {renderIllustration(page.illustration)}
             </View>
 
-            {/* Main heading */}
+            {/* Feature title */}
             <Text style={styles.title}>{page.title}</Text>
 
-            {/* Subheading */}
+            {/* Feature description */}
             <Text style={styles.subtitle}>{page.subtitle}</Text>
           </View>
         ))}
       </ScrollView>
 
-      {/* Pagination dots */}
+      {/* Page indicator dots */}
       <View style={styles.pagination}>
         {onboardingPages.map((_, index) => (
           <TouchableOpacity
@@ -94,20 +126,25 @@ export default function Welcome() {
               styles.dot,
               currentPage === index ? styles.dotActive : styles.dotInactive
             ]}
+            accessibilityLabel={`Go to page ${index + 1}`}
           />
         ))}
       </View>
 
-      {/* Buttons */}
+      {/* Call-to-action buttons */}
       <View style={styles.buttons}>
         <TouchableOpacity
           style={styles.primaryButton}
           onPress={() => router.push('/(auth)/sign-up')}
+          accessibilityLabel="Get started with a new account"
         >
           <Text style={styles.primaryButtonText}>Get started</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity onPress={() => router.push('/(auth)/sign-in')}>
+        <TouchableOpacity 
+          onPress={() => router.push('/(auth)/sign-in')}
+          accessibilityLabel="Sign in to existing account"
+        >
           <Text style={styles.linkText}>
             I already have an account. <Text style={styles.linkBold}>Sign in</Text>
           </Text>
@@ -117,21 +154,24 @@ export default function Welcome() {
   );
 }
 
-// Gift Cards Illustration Component
+/**
+ * Gift Cards Illustration Component
+ * Shows a phone mockup with stacked gift cards and floating card icons
+ */
 function CardsIllustration() {
   return (
     <View style={styles.illustrationWrapper}>
-      {/* Phone mockup */}
+      {/* Phone mockup container */}
       <View style={styles.phone}>
         <View style={styles.phoneNotch} />
         <View style={styles.phoneContent}>
-          {/* Header */}
+          {/* App header */}
           <View style={styles.phoneHeader}>
             <View style={styles.headerTitle} />
             <View style={styles.headerIcon} />
           </View>
           
-          {/* Gift Card Stack */}
+          {/* Stacked gift cards display */}
           <View style={styles.cardStack}>
             <View style={[styles.giftCard, styles.giftCard1]}>
               <View style={styles.cardLogo} />
@@ -149,7 +189,7 @@ function CardsIllustration() {
         </View>
       </View>
       
-      {/* Floating gift card icons */}
+      {/* Decorative floating icons */}
       <View style={[styles.floatingCard, styles.floatingCard1]}>
         <Text style={styles.cardEmoji}>🎁</Text>
       </View>
@@ -160,15 +200,18 @@ function CardsIllustration() {
   );
 }
 
-// Notifications Illustration Component
+/**
+ * Notifications Illustration Component
+ * Shows a phone mockup with notification cards and badge indicators
+ */
 function NotificationsIllustration() {
   return (
     <View style={styles.illustrationWrapper}>
-      {/* Phone mockup */}
+      {/* Phone mockup container */}
       <View style={styles.phone}>
         <View style={styles.phoneNotch} />
         <View style={styles.phoneContent}>
-          {/* Notification Cards */}
+          {/* Location-based notification */}
           <View style={styles.notificationCard}>
             <View style={styles.notifIcon}>
               <Text style={styles.notifEmoji}>📍</Text>
@@ -179,6 +222,7 @@ function NotificationsIllustration() {
             </View>
           </View>
           
+          {/* Expiration reminder notification */}
           <View style={[styles.notificationCard, { marginTop: 16 }]}>
             <View style={styles.notifIcon}>
               <Text style={styles.notifEmoji}>⏰</Text>
@@ -191,7 +235,7 @@ function NotificationsIllustration() {
         </View>
       </View>
       
-      {/* Floating notification badges */}
+      {/* Decorative notification badges */}
       <View style={[styles.badge, styles.badge1]}>
         <Text style={styles.badgeText}>!</Text>
       </View>
@@ -202,15 +246,18 @@ function NotificationsIllustration() {
   );
 }
 
-// Scan Illustration Component
+/**
+ * Scan Illustration Component
+ * Shows a phone mockup with barcode display and scan animation effects
+ */
 function ScanIllustration() {
   return (
     <View style={styles.illustrationWrapper}>
-      {/* Phone mockup */}
+      {/* Phone mockup container */}
       <View style={styles.phone}>
         <View style={styles.phoneNotch} />
         <View style={styles.phoneContent}>
-          {/* Barcode Display */}
+          {/* Barcode display card */}
           <View style={styles.barcodeContainer}>
             <View style={styles.barcodeHeader} />
             <View style={styles.barcode}>
@@ -228,7 +275,7 @@ function ScanIllustration() {
             <View style={styles.barcodeNumber} />
           </View>
           
-          {/* Balance display */}
+          {/* Balance information */}
           <View style={styles.balanceDisplay}>
             <View style={styles.balanceLabel} />
             <View style={styles.balanceAmount} />
@@ -236,10 +283,10 @@ function ScanIllustration() {
         </View>
       </View>
       
-      {/* Scan animation effect */}
+      {/* Animated scan line effect */}
       <View style={styles.scanLine} />
       
-      {/* Floating icons */}
+      {/* Decorative scan icons */}
       <View style={[styles.scanIcon, styles.scanIcon1]}>
         <Text style={styles.scanEmoji}>📱</Text>
       </View>

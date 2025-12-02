@@ -1,4 +1,17 @@
-// Login screen
+/**
+ * Sign In Screen
+ * 
+ * Authenticates existing users via email and password.
+ * Integrates with Supabase Auth for secure authentication.
+ * 
+ * Features:
+ * - Email and password validation
+ * - Loading state during authentication
+ * - Error handling with user feedback
+ * - Navigation to forgot password flow
+ * - Keyboard-aware scrolling
+ * - Redirects to main app on success
+ */
 
 import { useState } from 'react';
 import {
@@ -11,12 +24,12 @@ import {
   Platform,
   ScrollView,
   Alert,
-  Image,  // Add this
+  Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { signIn } from '../../lib/supabase';
-import logo from '../../assets/images/logo.png'
+import logo from '../../assets/images/logo.png';
 
 export default function SignIn() {
   const [email, setEmail] = useState('');
@@ -24,17 +37,23 @@ export default function SignIn() {
   const [loading, setLoading] = useState(false);
   const router = useRouter();
 
+  /**
+   * Handles user sign in
+   * Validates input fields and authenticates via Supabase
+   */
   async function handleSignIn() {
+    // Validate required fields
     if (!email || !password) {
       Alert.alert('Error', 'Please fill in all fields');
       return;
     }
 
+    // Attempt sign in
     setLoading(true);
-    
     const { data, error: signInError } = await signIn(email, password);
     setLoading(false);
 
+    // Handle authentication response
     if (signInError) {
       Alert.alert('Error', signInError.message || 'Failed to sign in');
     } else {
@@ -54,7 +73,7 @@ export default function SignIn() {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          {/* Header */}
+          {/* Header with logo and close button */}
           <View style={styles.header}>
             <View style={styles.logoContainer}>
               <View style={styles.logo}>
@@ -68,12 +87,13 @@ export default function SignIn() {
             <TouchableOpacity 
               style={styles.closeButton}
               onPress={() => router.push('/(auth)/welcome')}
+              accessibilityLabel="Close and return to welcome"
             >
               <Text style={styles.closeIcon}>✕</Text>
             </TouchableOpacity>
           </View>
 
-          {/* Title Section */}
+          {/* Title and welcome message */}
           <View style={styles.titleSection}>
             <Text style={styles.title}>Welcome back</Text>
             <Text style={styles.subtitle}>
@@ -81,8 +101,9 @@ export default function SignIn() {
             </Text>
           </View>
 
-          {/* Form */}
+          {/* Sign in form */}
           <View style={styles.form}>
+            {/* Email input */}
             <View style={styles.inputGroup}>
               <Text style={styles.label}>Email</Text>
               <TextInput
@@ -94,13 +115,18 @@ export default function SignIn() {
                 keyboardType="email-address"
                 autoCapitalize="none"
                 autoComplete="email"
+                editable={!loading}
               />
             </View>
 
+            {/* Password input with forgot link */}
             <View style={styles.inputGroup}>
               <View style={styles.labelRow}>
                 <Text style={styles.label}>Password</Text>
-                <TouchableOpacity onPress={() => router.push('/(auth)/forgot-password')}>
+                <TouchableOpacity 
+                  onPress={() => router.push('/(auth)/forgot-password')}
+                  accessibilityLabel="Forgot password"
+                >
                   <Text style={styles.forgotLink}>Forgot?</Text>
                 </TouchableOpacity>
               </View>
@@ -112,26 +138,31 @@ export default function SignIn() {
                 placeholderTextColor="#9CA3AF"
                 secureTextEntry
                 autoCapitalize="none"
+                editable={!loading}
               />
             </View>
           </View>
 
-          {/* Sign In Button */}
+          {/* Submit button */}
           <TouchableOpacity 
             style={[styles.signInButton, loading && styles.signInButtonDisabled]}
             onPress={handleSignIn}
             disabled={loading}
             activeOpacity={0.8}
+            accessibilityLabel="Sign in to your account"
           >
             <Text style={styles.signInButtonText}>
               {loading ? 'Signing In...' : 'Sign In'}
             </Text>
           </TouchableOpacity>
 
-          {/* Sign Up Link */}
+          {/* Navigation to sign up */}
           <View style={styles.footer}>
             <Text style={styles.footerText}>Don't have an account? </Text>
-            <TouchableOpacity onPress={() => router.push('/(auth)/sign-up')}>
+            <TouchableOpacity 
+              onPress={() => router.push('/(auth)/sign-up')}
+              accessibilityLabel="Create a new account"
+            >
               <Text style={styles.footerLink}>Create account</Text>
             </TouchableOpacity>
           </View>

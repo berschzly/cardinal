@@ -1,3 +1,24 @@
+/**
+ * Root Layout Component
+ * 
+ * Top-level navigation and authentication manager for the entire application.
+ * Handles session management, authentication flow, and global notification setup.
+ * 
+ * Features:
+ * - Supabase authentication session management
+ * - Protected route navigation (auth vs authenticated screens)
+ * - Animated splash screen during initialization
+ * - Global notification configuration and listeners
+ * - Deep linking support for notification interactions
+ * - Automatic redirection based on authentication state
+ * 
+ * Flow:
+ * 1. Display splash screen while checking authentication
+ * 2. Navigate to auth screens if no session exists
+ * 3. Navigate to main app if authenticated
+ * 4. Set up notification handlers for authenticated users
+ */
+
 import { Stack, useRouter, useSegments, useRootNavigationState } from 'expo-router';
 import { useEffect, useState, useRef } from 'react';
 import * as Notifications from 'expo-notifications';
@@ -5,9 +26,10 @@ import { View, Text, StyleSheet, Animated, Image } from 'react-native';
 import { supabase } from '../lib/supabase';
 import { requestNotificationPermissions } from '../lib/notifications';
 
-/** --------------------------
- * Configure notifications globally
- * -------------------------- */
+/**
+ * Global notification handler configuration
+ * Defines how notifications appear when app is in foreground
+ */
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowAlert: true,
@@ -28,26 +50,25 @@ export default function RootLayout() {
   const notifListener = useRef(null);
   const tapListener = useRef(null);
 
-  /** --------------------------
-   * 1) Load initial Supabase session & listen for auth changes
-   * -------------------------- */
+  /**
+   * Initialize authentication session and listen for auth state changes
+   * Checks for existing session on mount and subscribes to auth events
+   */
   useEffect(() => {
     let mounted = true;
 
     // Check for existing session on mount
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (mounted) {
-        console.log('Initial session check:', !!session);
         setSession(session);
         setIsReady(true);
       }
     });
 
-    // Listen for auth changes
+    // Subscribe to authentication state changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (event, newSession) => {
         if (!mounted) return;
-        console.log('Auth state changed:', event, !!newSession);
         setSession(newSession);
       }
     );
@@ -58,42 +79,48 @@ export default function RootLayout() {
     };
   }, []);
 
-  /** --------------------------
-   * 2) Navigation gate: redirect based on session
-   * HAPPENS DURING SPLASH SCREEN
-   * -------------------------- */
+  /**
+   * Navigation guard - redirects users based on authentication state
+   * Runs after session check completes and navigation is ready
+   * Maintains splash screen during navigation for smooth UX
+   */
   useEffect(() => {
     if (!isReady || !navigationState?.key) return;
 
     const inAuthGroup = segments[0] === '(auth)';
     const inTabsGroup = segments[0] === '(tabs)';
 
-    // Navigate immediately while splash is showing
+    // Redirect unauthenticated users to welcome screen
     if (!session && !inAuthGroup) {
-      console.log('→ Navigating to welcome (no session)');
       router.replace("/(auth)/welcome");
-    } else if (session && !inTabsGroup) {
-      console.log('→ Navigating to tabs (has session)');
+    } 
+    // Redirect authenticated users to main app
+    else if (session && !inTabsGroup) {
       router.replace("/(tabs)");
     }
 
-    // Hide splash after navigation completes + animation time
-    // Longer delay to cover initial data loading (2.5s total)
+    // Hide splash after navigation completes and initial data loads
     setTimeout(() => setShowSplash(false), 2500);
   }, [session, isReady, navigationState?.key]);
 
-  /** --------------------------
-   * 3) Notification listeners
-   * -------------------------- */
+  /**
+   * Set up notification listeners for authenticated users
+   * Handles foreground notifications and tap responses for deep linking
+   */
   useEffect(() => {
     if (!session) return;
 
+    // Request notification permissions
     requestNotificationPermissions();
 
+    // Listen for notifications received while app is open
     notifListener.current = Notifications.addNotificationReceivedListener(
-      (notification) => console.log('📬 Notification received:', notification)
+      (notification) => {
+        // Notification received in foreground (optional logging/handling)
+      }
     );
 
+    // Handle notification taps for deep linking
     tapListener.current = Notifications.addNotificationResponseReceivedListener(
       (response) => {
         const cardId = response.notification.request.content.data?.cardId;
@@ -109,16 +136,18 @@ export default function RootLayout() {
     };
   }, [session]);
 
-  /** --------------------------
-   * 4) Splash screen while loading
-   * -------------------------- */
+  /**
+   * Show splash screen during initialization
+   * Displays until navigation is ready and auth check completes
+   */
   if (!isReady || !navigationState?.key || showSplash) {
     return <SplashScreen />;
   }
 
-  /** --------------------------
-   * 5) Stack navigation
-   * -------------------------- */
+  /**
+   * Main navigation stack
+   * Defines all available routes with consistent styling
+   */
   return (
     <Stack
       screenOptions={{
@@ -136,13 +165,20 @@ export default function RootLayout() {
   );
 }
 
-/** --------------------------
+/**
  * Splash Screen Component
- * -------------------------- */
+ * 
+ * Animated loading screen shown during app initialization.
+ * Features fade-in and spring animations for logo and branding.
+ */
 function SplashScreen() {
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const scaleAnim = useRef(new Animated.Value(0.9)).current;
 
+  /**
+   * Initialize splash screen animations
+   * Runs fade and scale animations in parallel
+   */
   useEffect(() => {
     Animated.parallel([
       Animated.timing(fadeAnim, {
@@ -161,7 +197,7 @@ function SplashScreen() {
 
   return (
     <View style={styles.splashContainer}>
-      {/* Animated Logo */}
+      {/* Animated logo and branding */}
       <Animated.View
         style={[
           styles.logoContainer,
@@ -182,7 +218,7 @@ function SplashScreen() {
         <Text style={styles.tagline}>Never lose a gift card again</Text>
       </Animated.View>
 
-      {/* Loading indicator */}
+      {/* Loading progress indicator */}
       <View style={styles.loadingContainer}>
         <View style={styles.loadingBar}>
           <View style={styles.loadingProgress} />
@@ -193,12 +229,15 @@ function SplashScreen() {
 }
 
 const styles = StyleSheet.create({
+  // Splash screen container
   splashContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: '#141414',
   },
+  
+  // Logo and branding section
   logoContainer: {
     alignItems: 'center',
     marginBottom: 60,
@@ -225,9 +264,6 @@ const styles = StyleSheet.create({
     height: 50,
     borderRadius: 40,
   },
-  logoIcon: {
-    fontSize: 48,
-  },
   appName: {
     fontSize: 28,
     fontWeight: '700',
@@ -240,6 +276,8 @@ const styles = StyleSheet.create({
     color: '#9CA3AF',
     letterSpacing: 0.3,
   },
+  
+  // Loading indicator
   loadingContainer: {
     position: 'absolute',
     bottom: 80,

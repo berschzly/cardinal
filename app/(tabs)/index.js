@@ -1,4 +1,27 @@
-// Optimized Home/Dashboard - Updated with ConfirmationModal
+/**
+ * Dashboard Screen (Home)
+ * 
+ * Main screen displaying the user's gift card collection with statistics and management features.
+ * Implements optimized rendering with memoization and efficient list performance.
+ * 
+ * Features:
+ * - Real-time card collection with total balance calculation
+ * - Pull-to-refresh for manual data updates
+ * - Quick statistics (total, active, expiring cards)
+ * - Expiration tracking with visual indicators
+ * - Empty state onboarding for new users
+ * - Error handling with retry functionality
+ * - Silent background refreshes on screen focus
+ * - Optimized FlatList performance with virtualization
+ * - Accessibility support throughout
+ * 
+ * Performance Optimizations:
+ * - useCallback for stable function references
+ * - useMemo for expensive calculations
+ * - memo for child components
+ * - FlatList configuration for smooth scrolling
+ * - Conditional rendering based on loading state
+ */
 
 import { useState, useCallback, useMemo, useRef, memo } from 'react';
 import { 
@@ -32,15 +55,21 @@ export default function Dashboard() {
   
   const isInitialMount = useRef(true);
 
+  /**
+   * Loads cards and user settings from Supabase
+   * @param {boolean} silent - If true, suppresses error display for background updates
+   */
   const loadCards = useCallback(async (silent = false) => {
     try {
       if (!silent) setError(null);
       
+      // Fetch cards and settings in parallel for better performance
       const [cardsResult, settingsResult] = await Promise.all([
         handleAsync(() => getCards(), { showDefaultError: false }),
         handleAsync(() => getUserSettings(), { showDefaultError: false })
       ]);
 
+      // Handle cards result
       if (cardsResult.error) {
         setError(cardsResult.error);
         setCards([]);
@@ -48,11 +77,11 @@ export default function Dashboard() {
         setCards(cardsResult.data || []);
       }
 
+      // Handle settings result
       if (!settingsResult.error && settingsResult.data) {
         setIsPremium(settingsResult.data.is_premium || false);
       }
     } catch (err) {
-      console.error('Unexpected error loading cards:', err);
       if (!silent) {
         setError('An unexpected error occurred. Please try again.');
         setCards([]);
@@ -62,31 +91,43 @@ export default function Dashboard() {
     }
   }, []);
 
+  /**
+   * Loads cards on screen focus
+   * Initial mount shows loading screen, subsequent focuses do silent refresh
+   */
   useFocusEffect(
     useCallback(() => {
-      console.log('📱 Dashboard focused, loading cards...');
-      
       if (isInitialMount.current) {
         setLoading(true);
         loadCards();
         isInitialMount.current = false;
       } else {
+        // Silent refresh on subsequent focuses
         loadCards(true);
       }
     }, [loadCards])
   );
 
+  /**
+   * Handles pull-to-refresh gesture
+   */
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     await loadCards();
     setRefreshing(false);
   }, [loadCards]);
 
+  /**
+   * Calculates dashboard statistics
+   * Memoized to prevent recalculation on every render
+   */
   const stats = useMemo(() => {
+    // Calculate total balance across all cards
     const totalValue = cards.reduce((sum, card) => 
       sum + (parseFloat(card.balance) || 0), 0
     );
     
+    // Count cards expiring within 30 days
     const expiringCount = cards.filter(card => {
       if (!card.expiration_date) return false;
       const daysUntil = Math.ceil(
@@ -95,18 +136,27 @@ export default function Dashboard() {
       return daysUntil > 0 && daysUntil <= 30;
     }).length;
 
+    // Count cards with positive balance
     const activeCount = cards.filter(c => c.balance > 0).length;
 
     return { totalValue, expiringCount, activeCount };
   }, [cards]);
 
+  /**
+   * Handles retry button press from error state
+   */
   const handleRetry = useCallback(() => {
     setShowRetryModal(false);
     loadCards();
   }, [loadCards]);
 
+  /**
+   * Renders header section with error banner, total balance, and quick stats
+   * Memoized to prevent unnecessary re-renders
+   */
   const renderHeader = useMemo(() => (
     <>
+      {/* Error notification banner */}
       {error && (
         <View style={styles.errorBanner}>
           <View style={styles.errorBannerContent}>
@@ -124,8 +174,10 @@ export default function Dashboard() {
         </View>
       )}
 
+      {/* Total balance and stats cards */}
       {cards.length > 0 && (
         <>
+          {/* Main balance card */}
           <View 
             style={styles.totalBalanceCard}
             accessible={true}
@@ -151,7 +203,9 @@ export default function Dashboard() {
             </View>
           </View>
 
+          {/* Quick stats row */}
           <View style={styles.quickStats}>
+            {/* Total cards stat */}
             <View 
               style={styles.quickStatCard}
               accessible={true}
@@ -164,6 +218,7 @@ export default function Dashboard() {
               <Text style={styles.quickStatLabel}>Total</Text>
             </View>
 
+            {/* Active cards stat */}
             <View 
               style={styles.quickStatCard}
               accessible={true}
@@ -176,6 +231,7 @@ export default function Dashboard() {
               <Text style={styles.quickStatLabel}>Active</Text>
             </View>
 
+            {/* Expiring cards stat */}
             <View 
               style={styles.quickStatCard}
               accessible={true}
@@ -193,17 +249,30 @@ export default function Dashboard() {
     </>
   ), [error, cards.length, stats]);
 
+  /**
+   * Renders individual card item
+   * Wrapped in useCallback to maintain stable reference for FlatList optimization
+   */
   const renderItem = useCallback(({ item }) => (
     <CardItem card={item} />
   ), []);
 
+  /**
+   * Extracts unique key for each card
+   * Stable function reference for FlatList optimization
+   */
   const keyExtractor = useCallback((item) => item.id, []);
 
+  /**
+   * Renders empty state for new users
+   * Shows onboarding content with feature highlights and CTA
+   */
   const renderEmptyState = useCallback(() => {
     if (cards.length > 0) return null;
     
     return (
       <View style={styles.emptyContainer}>
+        {/* Hero section */}
         <View style={styles.emptyHero}>
           <View style={styles.logoIcon}>
             <Ionicons name="card" size={40} color="#DC2626" />
@@ -218,7 +287,9 @@ export default function Dashboard() {
           Never lose track of a gift card again
         </Text>
 
+        {/* Feature highlights */}
         <View style={styles.featuresContainer}>
+          {/* Smart scan feature */}
           <View style={styles.featureItem}>
             <View style={styles.featureIcon}>
               <Ionicons name="camera" size={28} color="#DC2626" />
@@ -229,6 +300,7 @@ export default function Dashboard() {
             </Text>
           </View>
 
+          {/* Balance tracking feature */}
           <View style={styles.featureItem}>
             <View style={styles.featureIcon}>
               <Ionicons name="stats-chart" size={28} color="#DC2626" />
@@ -239,6 +311,7 @@ export default function Dashboard() {
             </Text>
           </View>
 
+          {/* In-store usage feature */}
           <View style={styles.featureItem}>
             <View style={styles.featureIcon}>
               <Ionicons name="phone-portrait" size={28} color="#DC2626" />
@@ -250,6 +323,7 @@ export default function Dashboard() {
           </View>
         </View>
 
+        {/* CTA button */}
         <TouchableOpacity
           style={styles.addCardButton}
           onPress={() => router.push('/(tabs)/add-card')}
@@ -265,6 +339,9 @@ export default function Dashboard() {
     );
   }, [cards.length, router]);
 
+  /**
+   * Show full-screen loading state on initial mount
+   */
   if (loading && isInitialMount.current) {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
@@ -274,6 +351,9 @@ export default function Dashboard() {
     );
   }
 
+  /**
+   * Show error state when cards fail to load and list is empty
+   */
   if (error && cards.length === 0 && !loading) {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
@@ -284,6 +364,8 @@ export default function Dashboard() {
           </View>
           <Text style={styles.errorTitle}>Unable to Load Cards</Text>
           <Text style={styles.errorMessage}>{error}</Text>
+          
+          {/* Retry button */}
           <TouchableOpacity 
             style={styles.retryButton}
             onPress={() => setShowRetryModal(true)}
@@ -293,6 +375,8 @@ export default function Dashboard() {
           >
             <Text style={styles.retryButtonText}>Try Again</Text>
           </TouchableOpacity>
+          
+          {/* Manual add button */}
           <TouchableOpacity 
             style={styles.secondaryButton}
             onPress={() => router.push('/(tabs)/add-card')}
@@ -304,6 +388,7 @@ export default function Dashboard() {
           </TouchableOpacity>
         </View>
 
+        {/* Retry confirmation modal */}
         <ConfirmationModal
           visible={showRetryModal}
           onClose={() => setShowRetryModal(false)}
@@ -319,10 +404,14 @@ export default function Dashboard() {
     );
   }
 
+  /**
+   * Main dashboard view with card list
+   */
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <StatusBar barStyle="light-content" backgroundColor="#141414" />
       
+      {/* Page header with title and loading indicator */}
       <View style={styles.pageHeader}>
         <Text style={styles.pageTitle}>Cards</Text>
         {loading && !isInitialMount.current && (
@@ -330,6 +419,7 @@ export default function Dashboard() {
         )}
       </View>
       
+      {/* Optimized card list */}
       <FlatList
         data={cards}
         renderItem={renderItem}
@@ -354,6 +444,7 @@ export default function Dashboard() {
         keyboardDismissMode="on-drag"
         accessible={true}
         accessibilityLabel="Gift cards list"
+        // Performance optimizations
         removeClippedSubviews={true}
         maxToRenderPerBatch={10}
         updateCellsBatchingPeriod={50}

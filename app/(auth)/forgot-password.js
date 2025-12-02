@@ -1,3 +1,17 @@
+/**
+ * Forgot Password Screen
+ * 
+ * Allows users to request a password reset link via email.
+ * Includes email validation and sends reset instructions through Supabase Auth.
+ * 
+ * Features:
+ * - Email validation with regex pattern
+ * - Loading state during API request
+ * - Success/error feedback via alerts
+ * - Deep link redirect for password reset flow
+ * - Keyboard-aware scrolling
+ */
+
 import { useState } from 'react';
 import {
   View,
@@ -19,24 +33,32 @@ export default function ForgotPassword() {
   const [loading, setLoading] = useState(false);
   const router = useRouter();
 
+  /**
+   * Handles password reset request
+   * Validates email format and sends reset link via Supabase
+   */
   async function handleResetPassword() {
+    // Validate email presence
     if (!email) {
       Alert.alert('Error', 'Please enter your email address');
       return;
     }
 
+    // Validate email format
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
       Alert.alert('Error', 'Please enter a valid email address');
       return;
     }
 
+    // Send password reset email
     setLoading(true);
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
       redirectTo: 'cardinal://reset-password',
     });
     setLoading(false);
 
+    // Handle response
     if (error) {
       Alert.alert('Error', error.message);
     } else {
@@ -60,7 +82,7 @@ export default function ForgotPassword() {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          {/* Header */}
+          {/* Header with logo and close button */}
           <View style={styles.header}>
             <View style={styles.logoContainer}>
               <View style={styles.logo}>
@@ -70,12 +92,13 @@ export default function ForgotPassword() {
             <TouchableOpacity 
               style={styles.closeButton}
               onPress={() => router.push('/(auth)/sign-in')}
+              accessibilityLabel="Close and return to sign in"
             >
               <Text style={styles.closeIcon}>✕</Text>
             </TouchableOpacity>
           </View>
 
-          {/* Title Section */}
+          {/* Title and instructions */}
           <View style={styles.titleSection}>
             <Text style={styles.title}>Reset password</Text>
             <Text style={styles.subtitle}>
@@ -83,7 +106,7 @@ export default function ForgotPassword() {
             </Text>
           </View>
 
-          {/* Form */}
+          {/* Email input form */}
           <View style={styles.form}>
             <View style={styles.inputGroup}>
               <Text style={styles.label}>Email</Text>
@@ -96,26 +119,31 @@ export default function ForgotPassword() {
                 keyboardType="email-address"
                 autoCapitalize="none"
                 autoComplete="email"
+                editable={!loading}
               />
             </View>
           </View>
 
-          {/* Reset Button */}
+          {/* Submit button */}
           <TouchableOpacity 
             style={[styles.resetButton, loading && styles.resetButtonDisabled]}
             onPress={handleResetPassword}
             disabled={loading}
             activeOpacity={0.8}
+            accessibilityLabel="Send password reset link"
           >
             <Text style={styles.resetButtonText}>
               {loading ? 'Sending...' : 'Send Reset Link'}
             </Text>
           </TouchableOpacity>
 
-          {/* Back to Sign In Link */}
+          {/* Navigation back to sign in */}
           <View style={styles.footer}>
             <Text style={styles.footerText}>Remember your password? </Text>
-            <TouchableOpacity onPress={() => router.push('/(auth)/sign-in')}>
+            <TouchableOpacity 
+              onPress={() => router.push('/(auth)/sign-in')}
+              accessibilityLabel="Return to sign in"
+            >
               <Text style={styles.footerLink}>Sign in</Text>
             </TouchableOpacity>
           </View>
@@ -126,6 +154,7 @@ export default function ForgotPassword() {
 }
 
 const styles = StyleSheet.create({
+  // Layout containers
   container: {
     flex: 1,
     backgroundColor: '#141414',
@@ -143,7 +172,7 @@ const styles = StyleSheet.create({
     paddingBottom: 40,
   },
 
-  // Header
+  // Header section
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -176,7 +205,7 @@ const styles = StyleSheet.create({
     fontWeight: '400',
   },
 
-  // Title Section
+  // Title section
   titleSection: {
     marginBottom: 40,
   },
@@ -194,7 +223,7 @@ const styles = StyleSheet.create({
     lineHeight: 24,
   },
 
-  // Form
+  // Form styles
   form: {
     marginBottom: 32,
   },
@@ -219,7 +248,7 @@ const styles = StyleSheet.create({
     fontWeight: '400',
   },
 
-  // Reset Button
+  // Action button
   resetButton: {
     height: 56,
     backgroundColor: '#DC2626',
@@ -237,7 +266,7 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
   },
 
-  // Footer
+  // Footer navigation
   footer: {
     flexDirection: 'row',
     alignItems: 'center',

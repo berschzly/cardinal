@@ -1,4 +1,4 @@
-// Edit card screen - Polished design
+// Edit card screen - With ConfirmationModal
 
 import { useState, useEffect } from 'react';
 import {
@@ -7,7 +7,6 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  Alert,
   Platform,
   KeyboardAvoidingView,
   StatusBar,
@@ -31,6 +30,7 @@ import {
   scheduleExpirationReminder, 
   scheduleUsageReminder 
 } from '../../../lib/notifications';
+import ConfirmationModal from '../../../components/common/ConfirmationModal';
 
 import {
   FormInput,
@@ -61,6 +61,15 @@ export default function EditCard() {
   const [error, setError] = useState(null);
   const [hasChanges, setHasChanges] = useState(false);
 
+  // Confirmation modals
+  const [showValidationError, setShowValidationError] = useState(false);
+  const [validationErrorMessage, setValidationErrorMessage] = useState('');
+  const [showUpdateError, setShowUpdateError] = useState(false);
+  const [updateErrorMessage, setUpdateErrorMessage] = useState('');
+  const [showUpdateSuccess, setShowUpdateSuccess] = useState(false);
+  const [showDiscardChanges, setShowDiscardChanges] = useState(false);
+  const [showLoadError, setShowLoadError] = useState(false);
+
   useEffect(() => {
     loadCard();
   }, [id]);
@@ -74,8 +83,7 @@ export default function EditCard() {
     const result = await handleAsync(() => getCard(id), { showDefaultError: false });
     
     if (result.error) {
-      Alert.alert('Error', 'Failed to load card details');
-      router.back();
+      setShowLoadError(true);
       return;
     }
 
@@ -90,6 +98,10 @@ export default function EditCard() {
     
     setInitialLoading(false);
     setHasChanges(false);
+  }
+
+  function formatDateForInput(date) {
+    return date.toISOString().split('T')[0];
   }
 
   function validateField(field, value) {
@@ -122,7 +134,7 @@ export default function EditCard() {
       name, 
       brand, 
       balance,
-      card_number: stripCardNumberFormatting(cardNumber), // Removes spaces before DB save
+      card_number: stripCardNumberFormatting(cardNumber),
       pin, 
       notes,
       expiration_date: expirationDate ? formatDateForInput(expirationDate) : null,
@@ -130,7 +142,8 @@ export default function EditCard() {
 
     const validation = validateCardData(cardData);
     if (!validation.isValid) {
-      Alert.alert('Please Fix These Errors', formatValidationErrors(validation.errors));
+      setValidationErrorMessage(formatValidationErrors(validation.errors));
+      setShowValidationError(true);
       return;
     }
 
@@ -146,10 +159,8 @@ export default function EditCard() {
 
     if (result.error) {
       setError(result.error);
-      Alert.alert('Update Failed', result.error, [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Retry', onPress: handleSaveCard },
-      ]);
+      setUpdateErrorMessage(result.error);
+      setShowUpdateError(true);
       return;
     }
 
@@ -174,24 +185,30 @@ export default function EditCard() {
     }
 
     setHasChanges(false);
-    Alert.alert('Success!', 'Card updated successfully', [
-      { text: 'OK', onPress: () => router.back() },
-    ]);
+    setShowUpdateSuccess(true);
   }
 
   function handleCancel() {
     if (hasChanges) {
-      Alert.alert(
-        'Discard Changes?',
-        'You have unsaved changes. Are you sure you want to go back?',
-        [
-          { text: 'Keep Editing', style: 'cancel' },
-          { text: 'Discard', style: 'destructive', onPress: () => router.back() },
-        ]
-      );
+      setShowDiscardChanges(true);
     } else {
       router.back();
     }
+  }
+
+  function handleConfirmDiscard() {
+    setShowDiscardChanges(false);
+    router.back();
+  }
+
+  function handleUpdateSuccessConfirm() {
+    setShowUpdateSuccess(false);
+    router.back();
+  }
+
+  function handleLoadErrorConfirm() {
+    setShowLoadError(false);
+    router.back();
   }
 
   if (initialLoading) {
@@ -390,6 +407,67 @@ export default function EditCard() {
           <View style={styles.bottomSpacer} />
         </ScrollView>
       </KeyboardAvoidingView>
+
+      {/* Load Error Modal */}
+      <ConfirmationModal
+        visible={showLoadError}
+        onClose={handleLoadErrorConfirm}
+        onConfirm={handleLoadErrorConfirm}
+        title="Error"
+        message="Failed to load card details"
+        confirmText="OK"
+        singleButton={true}
+        variant="error"
+      />
+
+      {/* Validation Error Modal */}
+      <ConfirmationModal
+        visible={showValidationError}
+        onClose={() => setShowValidationError(false)}
+        onConfirm={() => setShowValidationError(false)}
+        title="Please Fix These Errors"
+        message={validationErrorMessage}
+        confirmText="OK"
+        singleButton={true}
+        variant="warning"
+      />
+
+      {/* Update Error Modal */}
+      <ConfirmationModal
+        visible={showUpdateError}
+        onClose={() => setShowUpdateError(false)}
+        onConfirm={handleSaveCard}
+        title="Update Failed"
+        message={updateErrorMessage}
+        confirmText="Retry"
+        cancelText="Cancel"
+        variant="error"
+        loading={loading}
+      />
+
+      {/* Update Success Modal */}
+      <ConfirmationModal
+        visible={showUpdateSuccess}
+        onClose={handleUpdateSuccessConfirm}
+        onConfirm={handleUpdateSuccessConfirm}
+        title="Success!"
+        message="Card updated successfully"
+        confirmText="OK"
+        singleButton={true}
+        variant="success"
+      />
+
+      {/* Discard Changes Modal */}
+      <ConfirmationModal
+        visible={showDiscardChanges}
+        onClose={() => setShowDiscardChanges(false)}
+        onConfirm={handleConfirmDiscard}
+        title="Discard Changes?"
+        message="You have unsaved changes. Are you sure you want to go back?"
+        confirmText="Discard"
+        cancelText="Keep Editing"
+        variant="warning"
+      />
     </SafeAreaView>
   );
 }

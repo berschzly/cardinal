@@ -1,7 +1,7 @@
 import { Stack, useRouter, useSegments, useRootNavigationState } from 'expo-router';
 import { useEffect, useState, useRef } from 'react';
 import * as Notifications from 'expo-notifications';
-import { View, ActivityIndicator, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, Animated, Image } from 'react-native';
 import { supabase } from '../lib/supabase';
 import { requestNotificationPermissions } from '../lib/notifications';
 
@@ -18,7 +18,8 @@ Notifications.setNotificationHandler({
 
 export default function RootLayout() {
   const [session, setSession] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [isReady, setIsReady] = useState(false);
+  const [showSplash, setShowSplash] = useState(true);
 
   const router = useRouter();
   const segments = useSegments();
@@ -29,7 +30,6 @@ export default function RootLayout() {
 
   /** --------------------------
    * 1) Load initial Supabase session & listen for auth changes
-   * FIXED: Added getSession() call on mount
    * -------------------------- */
   useEffect(() => {
     let mounted = true;
@@ -37,18 +37,18 @@ export default function RootLayout() {
     // Check for existing session on mount
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (mounted) {
+        console.log('Initial session check:', !!session);
         setSession(session);
-        setLoading(false);
+        setIsReady(true);
       }
     });
 
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (event, session) => {
+      (event, newSession) => {
         if (!mounted) return;
-        console.log('Auth state changed:', event, !!session);
-        setSession(session);
-        setLoading(false);
+        console.log('Auth state changed:', event, !!newSession);
+        setSession(newSession);
       }
     );
 
@@ -60,46 +60,40 @@ export default function RootLayout() {
 
   /** --------------------------
    * 2) Navigation gate: redirect based on session
-   * FIXED: Simplified logic to prevent loops
+   * HAPPENS DURING SPLASH SCREEN
    * -------------------------- */
   useEffect(() => {
-    // Wait for both loading and navigation to be ready
-    if (loading || !navigationState?.key) return;
+    if (!isReady || !navigationState?.key) return;
 
     const inAuthGroup = segments[0] === '(auth)';
+    const inTabsGroup = segments[0] === '(tabs)';
 
-    console.log("Navigation check:", {
-      hasSession: !!session,
-      inAuthGroup,
-      segments,
-    });
-
-    // Redirect logic
+    // Navigate immediately while splash is showing
     if (!session && !inAuthGroup) {
-      // User is logged out but not in auth screens
+      console.log('→ Navigating to welcome (no session)');
       router.replace("/(auth)/welcome");
-    } else if (session && inAuthGroup) {
-      // User is logged in but still in auth screens
+    } else if (session && !inTabsGroup) {
+      console.log('→ Navigating to tabs (has session)');
       router.replace("/(tabs)");
     }
-  }, [session, loading, segments, navigationState?.key]);
+
+    // Hide splash after navigation completes + animation time
+    // Longer delay to cover initial data loading (2.5s total)
+    setTimeout(() => setShowSplash(false), 2500);
+  }, [session, isReady, navigationState?.key]);
 
   /** --------------------------
    * 3) Notification listeners
-   * Only setup once the user is logged in
    * -------------------------- */
   useEffect(() => {
     if (!session) return;
 
-    // Request permissions for notifications
     requestNotificationPermissions();
 
-    // Listener for notifications received while app is foregrounded
     notifListener.current = Notifications.addNotificationReceivedListener(
       (notification) => console.log('📬 Notification received:', notification)
     );
 
-    // Listener for user tapping on a notification
     tapListener.current = Notifications.addNotificationResponseReceivedListener(
       (response) => {
         const cardId = response.notification.request.content.data?.cardId;
@@ -109,7 +103,6 @@ export default function RootLayout() {
       }
     );
 
-    // Cleanup listeners
     return () => {
       notifListener.current?.remove?.();
       tapListener.current?.remove?.();
@@ -117,16 +110,10 @@ export default function RootLayout() {
   }, [session]);
 
   /** --------------------------
-   * 4) Loading screen while session is being checked
+   * 4) Splash screen while loading
    * -------------------------- */
-  if (loading || !navigationState?.key) {
-    return (
-      <View style={styles.loadingContainer}>
-        <View style={styles.logo}>
-          <ActivityIndicator size="large" color="#DC2626" />
-        </View>
-      </View>
-    );
+  if (!isReady || !navigationState?.key || showSplash) {
+    return <SplashScreen />;
   }
 
   /** --------------------------
@@ -149,12 +136,72 @@ export default function RootLayout() {
   );
 }
 
+/** --------------------------
+ * Splash Screen Component
+ * -------------------------- */
+function SplashScreen() {
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const scaleAnim = useRef(new Animated.Value(0.9)).current;
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 600,
+        useNativeDriver: true,
+      }),
+      Animated.spring(scaleAnim, {
+        toValue: 1,
+        tension: 50,
+        friction: 7,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, []);
+
+  return (
+    <View style={styles.splashContainer}>
+      {/* Animated Logo */}
+      <Animated.View
+        style={[
+          styles.logoContainer,
+          {
+            opacity: fadeAnim,
+            transform: [{ scale: scaleAnim }],
+          },
+        ]}
+      >
+        <View style={styles.logo}>
+          <Image 
+            source={require('../assets/images/logo.png')} 
+            style={styles.logoImage}
+            resizeMode="contain"
+          />
+        </View>
+        <Text style={styles.appName}>Cardinal</Text>
+        <Text style={styles.tagline}>Never lose a gift card again</Text>
+      </Animated.View>
+
+      {/* Loading indicator */}
+      <View style={styles.loadingContainer}>
+        <View style={styles.loadingBar}>
+          <View style={styles.loadingProgress} />
+        </View>
+      </View>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
-  loadingContainer: {
+  splashContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: '#141414',
+  },
+  logoContainer: {
+    alignItems: 'center',
+    marginBottom: 60,
   },
   logo: {
     width: 80,
@@ -165,5 +212,49 @@ const styles = StyleSheet.create({
     borderColor: '#DC2626',
     justifyContent: 'center',
     alignItems: 'center',
+    marginBottom: 20,
+    shadowColor: '#DC2626',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+    overflow: 'hidden',
+  },
+  logoImage: {
+    width: 50,
+    height: 50,
+    borderRadius: 40,
+  },
+  logoIcon: {
+    fontSize: 48,
+  },
+  appName: {
+    fontSize: 28,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    letterSpacing: -0.5,
+    marginBottom: 6,
+  },
+  tagline: {
+    fontSize: 13,
+    color: '#9CA3AF',
+    letterSpacing: 0.3,
+  },
+  loadingContainer: {
+    position: 'absolute',
+    bottom: 80,
+    width: 200,
+  },
+  loadingBar: {
+    height: 3,
+    backgroundColor: '#1F1F1F',
+    borderRadius: 2,
+    overflow: 'hidden',
+  },
+  loadingProgress: {
+    height: '100%',
+    width: '70%',
+    backgroundColor: '#DC2626',
+    borderRadius: 2,
   },
 });

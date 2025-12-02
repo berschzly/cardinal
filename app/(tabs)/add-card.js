@@ -1,4 +1,4 @@
-// Add new card screen - Performance optimized
+// Add new card screen - Performance optimized with ConfirmationModal
 
 import { useState, useEffect, useCallback, useMemo, memo, useRef } from 'react';
 import {
@@ -32,6 +32,7 @@ import {
 import { handleAsync } from '../../utils/errorHandling';
 import { scheduleExpirationReminder, scheduleUsageReminder } from '../../lib/notifications';
 import OCRScanner from '../../components/add-cards/OCRScanner';
+import ConfirmationModal from '../../components/common/ConfirmationModal';
 
 import {
   FormInput,
@@ -167,6 +168,14 @@ export default function AddCard() {
   const [isPremium, setIsPremium] = useState(false);
   const [showPremiumModal, setShowPremiumModal] = useState(false);
   const [error, setError] = useState(null);
+
+  // Confirmation modals
+  const [showValidationError, setShowValidationError] = useState(false);
+  const [validationErrorMessage, setValidationErrorMessage] = useState('');
+  const [showSaveError, setShowSaveError] = useState(false);
+  const [saveErrorMessage, setSaveErrorMessage] = useState('');
+  const [showScanComplete, setShowScanComplete] = useState(false);
+  const [showSaveSuccess, setShowSaveSuccess] = useState(false);
 
   // Pan Responder for modal gesture
   const panResponderConfig = useMemo(() => {
@@ -309,6 +318,7 @@ export default function AddCard() {
     setTouched({ name: true, balance: true, card_number: true, pin: true });
 
     if (!isPremium && cardCount >= 10) {
+      console.log('🚫 Card limit reached, showing modal');
       setShowPremiumModal(true);
       return;
     }
@@ -325,7 +335,8 @@ export default function AddCard() {
 
     const validation = validateCardData(cardData);
     if (!validation.isValid) {
-      Alert.alert('Please Fix These Errors', formatValidationErrors(validation.errors));
+      setValidationErrorMessage(formatValidationErrors(validation.errors));
+      setShowValidationError(true);
       return;
     }
 
@@ -341,10 +352,8 @@ export default function AddCard() {
 
     if (result.error) {
       setError(result.error);
-      Alert.alert('Save Failed', result.error, [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Retry', onPress: handleSaveCard },
-      ]);
+      setSaveErrorMessage(result.error);
+      setShowSaveError(true);
       return;
     }
 
@@ -368,12 +377,8 @@ export default function AddCard() {
 
     setCardCount(prev => prev + 1);
     clearForm();
-    
-    Alert.alert('Success!', 'Card added successfully', [
-      { text: 'Add Another', style: 'cancel' },
-      { text: 'View Cards', onPress: () => router.push('/(tabs)') },
-    ]);
-  }, [isPremium, cardCount, name, brand, balance, cardNumber, pin, notes, expirationDate, clearForm, router]);
+    setShowSaveSuccess(true);
+  }, [isPremium, cardCount, name, brand, balance, cardNumber, pin, notes, expirationDate, clearForm]);
 
   const handleScanComplete = useCallback((ocrData) => {
     setShowScanner(false);
@@ -393,7 +398,7 @@ export default function AddCard() {
     if (ocrData.expirationDate) {
       setExpirationDate(new Date(ocrData.expirationDate));
     }
-    Alert.alert('Scan Complete', 'Review and edit the details below');
+    setShowScanComplete(true);
   }, [validateField]);
 
   const progressPercentage = useMemo(() => 
@@ -412,7 +417,10 @@ export default function AddCard() {
   );
 
   const handleDismissError = useCallback(() => setError(null), []);
-  const handleShowPremiumModal = useCallback(() => setShowPremiumModal(true), []);
+  const handleShowPremiumModal = useCallback(() => {
+    console.log('🎯 Opening premium modal');
+    setShowPremiumModal(true);
+  }, []);
   const handleClosePremiumModal = useCallback(() => setShowPremiumModal(false), []);
   const handleShowScanner = useCallback(() => setShowScanner(true), []);
   const handleCloseScanner = useCallback(() => setShowScanner(false), []);
@@ -421,6 +429,15 @@ export default function AddCard() {
     Alert.alert('Premium Coming Soon', 'Premium subscriptions will be available after launch.');
     setShowPremiumModal(false);
   }, []);
+
+  const handleAddAnother = useCallback(() => {
+    setShowSaveSuccess(false);
+  }, []);
+
+  const handleViewCards = useCallback(() => {
+    setShowSaveSuccess(false);
+    router.push('/(tabs)');
+  }, [router]);
 
   if (initialLoading) {
     return (
@@ -601,6 +618,7 @@ export default function AddCard() {
         </ScrollView>
       </KeyboardAvoidingView>
 
+      {/* Scanner Modal */}
       {showScanner && (
         <Modal visible={showScanner} animationType="slide" presentationStyle="fullScreen">
           <OCRScanner
@@ -610,41 +628,92 @@ export default function AddCard() {
         </Modal>
       )}
 
+      {/* Validation Error Modal */}
+      <ConfirmationModal
+        visible={showValidationError}
+        onClose={() => setShowValidationError(false)}
+        onConfirm={() => setShowValidationError(false)}
+        title="Please Fix These Errors"
+        message={validationErrorMessage}
+        confirmText="OK"
+        cancelText=""
+        icon="alert-circle"
+        iconColor="#F59E0B"
+      />
+
+      {/* Save Error Modal */}
+      <ConfirmationModal
+        visible={showSaveError}
+        onClose={() => setShowSaveError(false)}
+        onConfirm={handleSaveCard}
+        title="Save Failed"
+        message={saveErrorMessage}
+        confirmText="Retry"
+        cancelText="Cancel"
+        icon="close-circle"
+        iconColor="#DC2626"
+        loading={loading}
+      />
+
+      {/* Scan Complete Modal */}
+      <ConfirmationModal
+        visible={showScanComplete}
+        onClose={() => setShowScanComplete(false)}
+        onConfirm={() => setShowScanComplete(false)}
+        title="Scan Complete"
+        message="Review and edit the details below"
+        confirmText="OK"
+        cancelText=""
+        icon="checkmark-circle"
+        iconColor="#10B981"
+      />
+
+      {/* Save Success Modal */}
+      <ConfirmationModal
+        visible={showSaveSuccess}
+        onClose={handleAddAnother}
+        onConfirm={handleViewCards}
+        title="Success!"
+        message="Card added successfully"
+        confirmText="View Cards"
+        cancelText="Add Another"
+        icon="checkmark-circle"
+        iconColor="#10B981"
+      />
+
+      {/* Premium Modal */}
       {showPremiumModal && (
         <Modal
           visible={showPremiumModal}
-          animationType="fade"
           transparent={true}
+          animationType="slide"
           onRequestClose={handleClosePremiumModal}
         >
-          <View style={styles.modalWrapper}>
-            <Animated.View 
-              style={[
-                styles.modalBackdrop, 
-                { opacity: panResponderConfig.backdropOpacity }
-              ]}
-            >
-              <TouchableOpacity 
-                style={StyleSheet.absoluteFill}
-                activeOpacity={1}
-                onPress={handleClosePremiumModal}
-              />
-            </Animated.View>
+          <View style={{
+            flex: 1,
+            backgroundColor: 'rgba(0, 0, 0, 0.8)',
+            justifyContent: 'flex-end',
+          }}>
+            <TouchableOpacity 
+              style={StyleSheet.absoluteFill}
+              activeOpacity={1}
+              onPress={handleClosePremiumModal}
+            />
             
-            <Animated.View 
-              style={[
-                styles.modalContainer,
-                {
-                  transform: [{ translateY: panResponderConfig.translateY }]
-                }
-              ]}
-              {...panResponderConfig.panResponder.panHandlers}
-            >
+            <View style={{
+              backgroundColor: '#1F1F1F',
+              borderTopLeftRadius: 24,
+              borderTopRightRadius: 24,
+              borderTopWidth: 2,
+              borderLeftWidth: 2,
+              borderRightWidth: 2,
+              borderColor: '#2A2A2A',
+              maxHeight: '85%',
+            }}>
               <ScrollView 
-                style={styles.modalScrollView}
-                contentContainerStyle={styles.modalContent}
                 showsVerticalScrollIndicator={false}
                 bounces={false}
+                contentContainerStyle={{ paddingHorizontal: 24, paddingBottom: 40 }}
               >
                 <View style={styles.dragHandleContainer}>
                   <View style={styles.dragHandle} />
@@ -671,15 +740,15 @@ export default function AddCard() {
                 <PremiumFeaturesList />
 
                 <View style={styles.premiumPricing}>
-                  <View style={styles.pricingOption}>
+                  <TouchableOpacity style={styles.pricingOption}>
                     <Text style={styles.pricingLabel}>Monthly</Text>
                     <View style={styles.pricingAmount}>
                       <Text style={styles.priceNumber}>$4.99</Text>
                       <Text style={styles.pricePeriod}>/mo</Text>
                     </View>
-                  </View>
+                  </TouchableOpacity>
                   
-                  <View style={[styles.pricingOption, styles.pricingOptionBest]}>
+                  <TouchableOpacity style={[styles.pricingOption, styles.pricingOptionBest]}>
                     <View style={styles.bestValueBadge}>
                       <Text style={styles.bestValueText}>SAVE $10</Text>
                     </View>
@@ -688,7 +757,7 @@ export default function AddCard() {
                       <Text style={styles.priceNumber}>$49.99</Text>
                       <Text style={styles.pricePeriod}>/yr</Text>
                     </View>
-                  </View>
+                  </TouchableOpacity>
                 </View>
 
                 <TouchableOpacity 
@@ -707,7 +776,7 @@ export default function AddCard() {
                   <Text style={styles.laterButtonText}>Maybe Later</Text>
                 </TouchableOpacity>
               </ScrollView>
-            </Animated.View>
+            </View>
           </View>
         </Modal>
       )}
@@ -975,6 +1044,7 @@ const styles = StyleSheet.create({
   modalWrapper: {
     flex: 1,
     justifyContent: 'flex-end',
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
   },
   modalBackdrop: {
     ...StyleSheet.absoluteFillObject,

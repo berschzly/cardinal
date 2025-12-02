@@ -1,4 +1,4 @@
-// ConfirmationModal.js - Reusable confirmation modal component
+// ConfirmationModal.js - Reusable confirmation modal component with variant support
 
 import { memo } from 'react';
 import {
@@ -7,9 +7,42 @@ import {
   StyleSheet,
   Modal,
   TouchableOpacity,
-  Animated,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+
+// Predefined variants for common modal types
+const MODAL_VARIANTS = {
+  default: {
+    icon: 'help-circle',
+    iconColor: '#DC2626',
+    confirmColor: '#DC2626',
+  },
+  error: {
+    icon: 'close-circle',
+    iconColor: '#DC2626',
+    confirmColor: '#DC2626',
+  },
+  warning: {
+    icon: 'warning',
+    iconColor: '#F59E0B',
+    confirmColor: '#F59E0B',
+  },
+  success: {
+    icon: 'checkmark-circle',
+    iconColor: '#10B981',
+    confirmColor: '#10B981',
+  },
+  info: {
+    icon: 'information-circle',
+    iconColor: '#3B82F6',
+    confirmColor: '#3B82F6',
+  },
+  destructive: {
+    icon: 'trash',
+    iconColor: '#DC2626',
+    confirmColor: '#DC2626',
+  },
+};
 
 const ConfirmationModal = memo(({
   visible,
@@ -19,12 +52,23 @@ const ConfirmationModal = memo(({
   message,
   confirmText = 'Confirm',
   cancelText = 'Cancel',
-  confirmDestructive = false,
-  icon,
-  iconColor = '#DC2626',
+  variant = 'default', // 'default', 'error', 'warning', 'success', 'info', 'destructive'
+  icon, // Override variant icon
+  iconColor, // Override variant icon color
+  confirmColor, // Override variant confirm button color
+  confirmDestructive = false, // Legacy prop for destructive style
   loading = false,
+  singleButton = false, // Show only confirm button (no cancel)
 }) => {
   if (!visible) return null;
+
+  // Get variant settings
+  const variantSettings = MODAL_VARIANTS[variant] || MODAL_VARIANTS.default;
+  
+  // Use custom values or fall back to variant defaults
+  const finalIcon = icon || variantSettings.icon;
+  const finalIconColor = iconColor || variantSettings.iconColor;
+  const finalConfirmColor = confirmColor || (confirmDestructive ? '#DC2626' : variantSettings.confirmColor);
 
   return (
     <Modal
@@ -42,9 +86,9 @@ const ConfirmationModal = memo(({
         
         <View style={styles.modalContainer}>
           {/* Icon */}
-          {icon && (
-            <View style={[styles.iconContainer, { backgroundColor: `${iconColor}20` }]}>
-              <Ionicons name={icon} size={32} color={iconColor} />
+          {finalIcon && (
+            <View style={[styles.iconContainer, { backgroundColor: `${finalIconColor}20` }]}>
+              <Ionicons name={finalIcon} size={32} color={finalIconColor} />
             </View>
           )}
 
@@ -55,21 +99,24 @@ const ConfirmationModal = memo(({
           <Text style={styles.modalMessage}>{message}</Text>
 
           {/* Buttons */}
-          <View style={styles.buttonContainer}>
-            <TouchableOpacity
-              style={styles.cancelButton}
-              onPress={onClose}
-              activeOpacity={0.7}
-              disabled={loading}
-            >
-              <Text style={styles.cancelButtonText}>{cancelText}</Text>
-            </TouchableOpacity>
+          <View style={[styles.buttonContainer, singleButton && styles.buttonContainerSingle]}>
+            {!singleButton && cancelText && (
+              <TouchableOpacity
+                style={[styles.cancelButton, singleButton && { display: 'none' }]}
+                onPress={onClose}
+                activeOpacity={0.7}
+                disabled={loading}
+              >
+                <Text style={styles.cancelButtonText}>{cancelText}</Text>
+              </TouchableOpacity>
+            )}
 
             <TouchableOpacity
               style={[
                 styles.confirmButton,
-                confirmDestructive && styles.confirmButtonDestructive,
+                { backgroundColor: finalConfirmColor },
                 loading && styles.buttonDisabled,
+                singleButton && styles.confirmButtonFull,
               ]}
               onPress={onConfirm}
               activeOpacity={0.7}
@@ -135,6 +182,9 @@ const styles = StyleSheet.create({
     gap: 12,
     width: '100%',
   },
+  buttonContainerSingle: {
+    flexDirection: 'column',
+  },
   cancelButton: {
     flex: 1,
     height: 52,
@@ -153,13 +203,12 @@ const styles = StyleSheet.create({
   confirmButton: {
     flex: 1,
     height: 52,
-    backgroundColor: '#DC2626',
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  confirmButtonDestructive: {
-    backgroundColor: '#DC2626',
+  confirmButtonFull: {
+    width: '100%',
   },
   confirmButtonText: {
     fontSize: 16,

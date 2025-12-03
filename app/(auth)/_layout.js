@@ -13,29 +13,22 @@
 
 import { Stack } from 'expo-router';
 
+const DARK_BG = '#141414';
+
 export default function AuthLayout() {
   return (
     <Stack
       screenOptions={{
-        // Hide default header to allow custom authentication UI
         headerShown: false,
-        
-        // Dark background for content and cards to prevent white flash
-        contentStyle: { backgroundColor: '#141414' },
-        cardStyle: { backgroundColor: '#141414' },
-        
-        // Smooth fade transition between auth screens
+        contentStyle: { backgroundColor: DARK_BG },
         animation: 'fade',
+        statusBarStyle: 'light',
+        gestureEnabled: true,
       }}
     >
-      {/* Initial landing screen */}
       <Stack.Screen name="welcome" />
-      
-      {/* User authentication screens */}
       <Stack.Screen name="sign-in" />
       <Stack.Screen name="sign-up" />
-      
-      {/* Password recovery flow */}
       <Stack.Screen name="forgot-password" />
     </Stack>
   );

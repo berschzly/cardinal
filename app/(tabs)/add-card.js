@@ -1,6 +1,6 @@
 // Add new card screen - Performance optimized with ConfirmationModal
 
-import { useState, useEffect, useCallback, useMemo, memo, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, memo } from 'react';
 import {
   View,
   Text,
@@ -12,8 +12,6 @@ import {
   Modal,
   KeyboardAvoidingView,
   StatusBar,
-  Animated,
-  PanResponder,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -33,17 +31,18 @@ import { handleAsync } from '../../utils/errorHandling';
 import { scheduleExpirationReminder, scheduleUsageReminder } from '../../lib/notifications';
 import OCRScanner from '../../components/add-cards/OCRScanner';
 import ConfirmationModal from '../../components/common/ConfirmationModal';
-
 import {
   FormInput,
   Button,
-  LoadingState,
   DatePickerInput,
+  LoadingScreen,
 } from '../../components/common';
 import { formatCardNumberInput, stripCardNumberFormatting } from '../../utils/formatter';
-import { LoadingScreen } from '../../components/common';
 
-// Move constants outside component
+// ============================================================================
+// CONSTANTS
+// ============================================================================
+
 const PREMIUM_FEATURES = [
   { icon: 'infinite', title: 'Unlimited Cards' },
   { icon: 'location', title: 'Location Alerts' },
@@ -51,7 +50,12 @@ const PREMIUM_FEATURES = [
   { icon: 'flash', title: 'Priority Support' },
 ];
 
-// Memoized components
+const CARD_LIMIT = 10;
+
+// ============================================================================
+// MEMOIZED COMPONENTS
+// ============================================================================
+
 const ScanCardButton = memo(({ onPress }) => (
   <TouchableOpacity
     style={styles.scanCard}
@@ -105,7 +109,7 @@ const WarningCard = memo(({ cardCount, onPress }) => (
       <View style={styles.warningTextContainer}>
         <Text style={styles.warningTitle}>Almost at your limit</Text>
         <Text style={styles.warningText}>
-          {Math.max(10 - cardCount, 0)} cards remaining • Tap to upgrade
+          {Math.max(CARD_LIMIT - cardCount, 0)} cards remaining • Tap to upgrade
         </Text>
       </View>
       <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
@@ -144,8 +148,112 @@ const InfoCard = memo(() => (
   </View>
 ));
 
+const PremiumModal = memo(({ 
+  visible, 
+  onClose, 
+  onUpgrade 
+}) => (
+  <Modal
+    visible={visible}
+    transparent={true}
+    animationType="slide"
+    onRequestClose={onClose}
+  >
+    <View style={styles.modalWrapper}>
+      <TouchableOpacity 
+        style={StyleSheet.absoluteFill}
+        activeOpacity={1}
+        onPress={onClose}
+      />
+      
+      <View style={styles.modalContainer}>
+        <ScrollView 
+          showsVerticalScrollIndicator={false}
+          bounces={false}
+          contentContainerStyle={styles.modalContent}
+        >
+          <View style={styles.dragHandleContainer}>
+            <View style={styles.dragHandle} />
+          </View>
+
+          <TouchableOpacity 
+            style={styles.modalCloseButton}
+            onPress={onClose}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="close" size={22} color="#9CA3AF" />
+          </TouchableOpacity>
+
+          <View style={styles.premiumBadge}>
+            <Ionicons name="star" size={12} color="#141414" />
+            <Text style={styles.premiumBadgeText}>PREMIUM</Text>
+          </View>
+
+          <Text style={styles.modalTitle}>Unlock Unlimited</Text>
+          <Text style={styles.modalDescription}>
+            Upgrade for unlimited cards and exclusive features.
+          </Text>
+
+          <PremiumFeaturesList />
+
+          <View style={styles.premiumPricing}>
+            <TouchableOpacity style={styles.pricingOption}>
+              <Text style={styles.pricingLabel}>Monthly</Text>
+              <View style={styles.pricingAmount}>
+                <Text style={styles.priceNumber}>$4.99</Text>
+                <Text style={styles.pricePeriod}>/mo</Text>
+              </View>
+            </TouchableOpacity>
+            
+            <TouchableOpacity style={[styles.pricingOption, styles.pricingOptionBest]}>
+              <View style={styles.bestValueBadge}>
+                <Text style={styles.bestValueText}>SAVE $10</Text>
+              </View>
+              <Text style={styles.pricingLabel}>Yearly</Text>
+              <View style={styles.pricingAmount}>
+                <Text style={styles.priceNumber}>$49.99</Text>
+                <Text style={styles.pricePeriod}>/yr</Text>
+              </View>
+            </TouchableOpacity>
+          </View>
+
+          <TouchableOpacity 
+            style={styles.upgradeButton}
+            onPress={onUpgrade}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.upgradeButtonText}>Upgrade Now</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity 
+            style={styles.laterButton}
+            onPress={onClose}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.laterButtonText}>Maybe Later</Text>
+          </TouchableOpacity>
+        </ScrollView>
+      </View>
+    </View>
+  </Modal>
+));
+
+// ============================================================================
+// HELPER FUNCTIONS
+// ============================================================================
+
+function formatDateForInput(date) {
+  return date.toISOString().split('T')[0];
+}
+
+// ============================================================================
+// MAIN COMPONENT
+// ============================================================================
+
 export default function AddCard() {
   const router = useRouter();
+  
+  // ========== State Management ==========
   const [loading, setLoading] = useState(false);
   const [initialLoading, setInitialLoading] = useState(true);
   
@@ -157,19 +265,19 @@ export default function AddCard() {
   const [pin, setPin] = useState('');
   const [notes, setNotes] = useState('');
   const [expirationDate, setExpirationDate] = useState(null);
-  const [showScanner, setShowScanner] = useState(false);
   
   // Validation
   const [fieldErrors, setFieldErrors] = useState({});
   const [touched, setTouched] = useState({});
   
-  // Premium state
+  // Premium & UI state
   const [cardCount, setCardCount] = useState(0);
   const [isPremium, setIsPremium] = useState(false);
-  const [showPremiumModal, setShowPremiumModal] = useState(false);
   const [error, setError] = useState(null);
-
-  // Confirmation modals
+  
+  // Modal state
+  const [showScanner, setShowScanner] = useState(false);
+  const [showPremiumModal, setShowPremiumModal] = useState(false);
   const [showValidationError, setShowValidationError] = useState(false);
   const [validationErrorMessage, setValidationErrorMessage] = useState('');
   const [showSaveError, setShowSaveError] = useState(false);
@@ -177,87 +285,28 @@ export default function AddCard() {
   const [showScanComplete, setShowScanComplete] = useState(false);
   const [showSaveSuccess, setShowSaveSuccess] = useState(false);
 
-  // Pan Responder for modal gesture
-  const panResponderConfig = useMemo(() => {
-    const translateY = new Animated.Value(1000);
-    const backdropOpacity = new Animated.Value(0);
-
-    return {
-      panResponder: PanResponder.create({
-        onStartShouldSetPanResponder: () => true,
-        onMoveShouldSetPanResponder: (_, gestureState) => {
-          return Math.abs(gestureState.dy) > 5;
-        },
-        onPanResponderMove: (_, gestureState) => {
-          if (gestureState.dy > 0) {
-            translateY.setValue(gestureState.dy);
-            const opacity = Math.max(0, 1 - gestureState.dy / 500);
-            backdropOpacity.setValue(opacity);
-          }
-        },
-        onPanResponderRelease: (_, gestureState) => {
-          if (gestureState.dy > 150 || gestureState.vy > 0.5) {
-            Animated.parallel([
-              Animated.timing(translateY, {
-                toValue: 1000,
-                duration: 300,
-                useNativeDriver: true,
-              }),
-              Animated.timing(backdropOpacity, {
-                toValue: 0,
-                duration: 300,
-                useNativeDriver: true,
-              }),
-            ]).start(() => {
-              setShowPremiumModal(false);
-              translateY.setValue(0);
-              backdropOpacity.setValue(1);
-            });
-          } else {
-            Animated.parallel([
-              Animated.spring(translateY, {
-                toValue: 0,
-                useNativeDriver: true,
-              }),
-              Animated.timing(backdropOpacity, {
-                toValue: 1,
-                duration: 200,
-                useNativeDriver: true,
-              }),
-            ]).start();
-          }
-        },
-      }),
-      translateY,
-      backdropOpacity,
-    };
-  }, []);
-
+  // ========== Effects ==========
   useEffect(() => {
     checkCardLimit();
   }, []);
 
-  useEffect(() => {
-    if (showPremiumModal) {
-      Animated.parallel([
-        Animated.spring(panResponderConfig.translateY, {
-          toValue: 0,
-          useNativeDriver: true,
-          tension: 65,
-          friction: 11,
-        }),
-        Animated.timing(panResponderConfig.backdropOpacity, {
-          toValue: 0.8,
-          duration: 300,
-          useNativeDriver: true,
-        }),
-      ]).start();
-    } else {
-      panResponderConfig.translateY.setValue(1000);
-      panResponderConfig.backdropOpacity.setValue(0);
-    }
-  }, [showPremiumModal]);
+  // ========== Computed Values ==========
+  const progressPercentage = useMemo(() => 
+    Math.min((cardCount / CARD_LIMIT) * 100, 100),
+    [cardCount]
+  );
 
+  const slotsRemaining = useMemo(() => 
+    Math.max(CARD_LIMIT - cardCount, 0),
+    [cardCount]
+  );
+
+  const showWarning = useMemo(() => 
+    !isPremium && cardCount >= 8,
+    [isPremium, cardCount]
+  );
+
+  // ========== API Calls ==========
   const checkCardLimit = useCallback(async () => {
     const [cardsResult, settingsResult] = await Promise.allSettled([
       handleAsync(() => getCards(), { showDefaultError: false }),
@@ -279,23 +328,37 @@ export default function AddCard() {
     setInitialLoading(false);
   }, []);
 
+  // ========== Validation ==========
   const validateField = useCallback((field, value) => {
     let validation = { isValid: true, error: null };
+    
     switch (field) {
-      case 'name': validation = isValidCardName(value); break;
-      case 'balance': validation = isValidBalance(value); break;
-      case 'card_number': validation = isValidCardNumber(value); break;
-      case 'pin': validation = isValidPin(value); break;
+      case 'name': 
+        validation = isValidCardName(value); 
+        break;
+      case 'balance': 
+        validation = isValidBalance(value); 
+        break;
+      case 'card_number': 
+        validation = isValidCardNumber(value); 
+        break;
+      case 'pin': 
+        validation = isValidPin(value); 
+        break;
     }
+    
     setFieldErrors(prev => ({
       ...prev,
       [field]: validation.isValid ? null : validation.error,
     }));
   }, []);
 
+  // ========== Form Handlers ==========
   const handleFieldChange = useCallback((field, value, setter) => {
     setter(value);
-    if (touched[field]) validateField(field, value);
+    if (touched[field]) {
+      validateField(field, value);
+    }
   }, [touched, validateField]);
 
   const handleFieldBlur = useCallback((field) => {
@@ -314,15 +377,17 @@ export default function AddCard() {
     setTouched({});
   }, []);
 
+  // ========== Save Handler ==========
   const handleSaveCard = useCallback(async () => {
     setTouched({ name: true, balance: true, card_number: true, pin: true });
 
-    if (!isPremium && cardCount >= 10) {
-      console.log('🚫 Card limit reached, showing modal');
+    // Check premium limit
+    if (!isPremium && cardCount >= CARD_LIMIT) {
       setShowPremiumModal(true);
       return;
     }
 
+    // Prepare card data
     const cardData = {
       name, 
       brand, 
@@ -333,6 +398,7 @@ export default function AddCard() {
       expiration_date: expirationDate ? formatDateForInput(expirationDate) : null,
     };
 
+    // Validate
     const validation = validateCardData(cardData);
     if (!validation.isValid) {
       setValidationErrorMessage(formatValidationErrors(validation.errors));
@@ -340,6 +406,7 @@ export default function AddCard() {
       return;
     }
 
+    // Save
     setLoading(true);
     setError(null);
     
@@ -357,6 +424,7 @@ export default function AddCard() {
       return;
     }
 
+    // Schedule notifications
     try {
       if (result.data?.id) {
         const cardForNotification = {
@@ -365,6 +433,7 @@ export default function AddCard() {
           balance: parseFloat(result.data.balance) || 0,
           expirationDate: result.data.expiration_date,
         };
+        
         if (result.data.expiration_date) {
           await scheduleExpirationReminder(cardForNotification);
         } else {
@@ -375,13 +444,16 @@ export default function AddCard() {
       console.error('⚠️ Notification scheduling failed:', notificationError);
     }
 
+    // Success
     setCardCount(prev => prev + 1);
     clearForm();
     setShowSaveSuccess(true);
   }, [isPremium, cardCount, name, brand, balance, cardNumber, pin, notes, expirationDate, clearForm]);
 
+  // ========== Scanner Handler ==========
   const handleScanComplete = useCallback((ocrData) => {
     setShowScanner(false);
+    
     if (ocrData.brand) setBrand(ocrData.brand);
     if (ocrData.cardNumber) {
       setCardNumber(ocrData.cardNumber);
@@ -398,33 +470,11 @@ export default function AddCard() {
     if (ocrData.expirationDate) {
       setExpirationDate(new Date(ocrData.expirationDate));
     }
+    
     setShowScanComplete(true);
   }, [validateField]);
 
-  const progressPercentage = useMemo(() => 
-    Math.min((cardCount / 10) * 100, 100),
-    [cardCount]
-  );
-
-  const slotsRemaining = useMemo(() => 
-    Math.max(10 - cardCount, 0),
-    [cardCount]
-  );
-
-  const showWarning = useMemo(() => 
-    !isPremium && cardCount >= 8,
-    [isPremium, cardCount]
-  );
-
-  const handleDismissError = useCallback(() => setError(null), []);
-  const handleShowPremiumModal = useCallback(() => {
-    console.log('🎯 Opening premium modal');
-    setShowPremiumModal(true);
-  }, []);
-  const handleClosePremiumModal = useCallback(() => setShowPremiumModal(false), []);
-  const handleShowScanner = useCallback(() => setShowScanner(true), []);
-  const handleCloseScanner = useCallback(() => setShowScanner(false), []);
-
+  // ========== Modal Handlers ==========
   const handleUpgradePress = useCallback(() => {
     Alert.alert('Premium Coming Soon', 'Premium subscriptions will be available after launch.');
     setShowPremiumModal(false);
@@ -439,6 +489,7 @@ export default function AddCard() {
     router.push('/(tabs)');
   }, [router]);
 
+  // ========== Render ==========
   if (initialLoading) {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
@@ -469,7 +520,7 @@ export default function AddCard() {
             <Text style={styles.pageSubtitle}>
               {isPremium 
                 ? 'Unlimited cards with Premium' 
-                : `${cardCount} of 10 cards used`}
+                : `${cardCount} of ${CARD_LIMIT} cards used`}
             </Text>
             
             {!isPremium && (
@@ -490,14 +541,17 @@ export default function AddCard() {
           </View>
 
           {error && (
-            <ErrorBanner error={error} onDismiss={handleDismissError} />
+            <ErrorBanner error={error} onDismiss={() => setError(null)} />
           )}
           
           {showWarning && (
-            <WarningCard cardCount={cardCount} onPress={handleShowPremiumModal} />
+            <WarningCard 
+              cardCount={cardCount} 
+              onPress={() => setShowPremiumModal(true)} 
+            />
           )}
 
-          <ScanCardButton onPress={handleShowScanner} />
+          <ScanCardButton onPress={() => setShowScanner(true)} />
 
           <View style={styles.divider}>
             <View style={styles.dividerLine} />
@@ -505,6 +559,7 @@ export default function AddCard() {
             <View style={styles.dividerLine} />
           </View>
 
+          {/* Card Details Section */}
           <View style={styles.formSection}>
             <Text style={styles.sectionTitle}>Card Details</Text>
             
@@ -542,6 +597,7 @@ export default function AddCard() {
             />
           </View>
 
+          {/* Security Info Section */}
           <View style={styles.formSection}>
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionTitle}>Security Info</Text>
@@ -583,6 +639,7 @@ export default function AddCard() {
             />
           </View>
 
+          {/* Additional Info Section */}
           <View style={styles.formSection}>
             <Text style={styles.sectionTitle}>Additional Info</Text>
             
@@ -620,10 +677,14 @@ export default function AddCard() {
 
       {/* Scanner Modal */}
       {showScanner && (
-        <Modal visible={showScanner} animationType="slide" presentationStyle="fullScreen">
+        <Modal 
+          visible={showScanner} 
+          animationType="slide" 
+          presentationStyle="fullScreen"
+        >
           <OCRScanner
             onScanComplete={handleScanComplete}
-            onClose={handleCloseScanner}
+            onClose={() => setShowScanner(false)}
           />
         </Modal>
       )}
@@ -682,110 +743,13 @@ export default function AddCard() {
       />
 
       {/* Premium Modal */}
-      {showPremiumModal && (
-        <Modal
-          visible={showPremiumModal}
-          transparent={true}
-          animationType="slide"
-          onRequestClose={handleClosePremiumModal}
-        >
-          <View style={{
-            flex: 1,
-            backgroundColor: 'rgba(0, 0, 0, 0.8)',
-            justifyContent: 'flex-end',
-          }}>
-            <TouchableOpacity 
-              style={StyleSheet.absoluteFill}
-              activeOpacity={1}
-              onPress={handleClosePremiumModal}
-            />
-            
-            <View style={{
-              backgroundColor: '#1F1F1F',
-              borderTopLeftRadius: 24,
-              borderTopRightRadius: 24,
-              borderTopWidth: 2,
-              borderLeftWidth: 2,
-              borderRightWidth: 2,
-              borderColor: '#2A2A2A',
-              maxHeight: '85%',
-            }}>
-              <ScrollView 
-                showsVerticalScrollIndicator={false}
-                bounces={false}
-                contentContainerStyle={{ paddingHorizontal: 24, paddingBottom: 40 }}
-              >
-                <View style={styles.dragHandleContainer}>
-                  <View style={styles.dragHandle} />
-                </View>
-
-                <TouchableOpacity 
-                  style={styles.modalCloseButton}
-                  onPress={handleClosePremiumModal}
-                  activeOpacity={0.7}
-                >
-                  <Ionicons name="close" size={22} color="#9CA3AF" />
-                </TouchableOpacity>
-
-                <View style={styles.premiumBadge}>
-                  <Ionicons name="star" size={12} color="#141414" />
-                  <Text style={styles.premiumBadgeText}>PREMIUM</Text>
-                </View>
-
-                <Text style={styles.modalTitle}>Unlock Unlimited</Text>
-                <Text style={styles.modalDescription}>
-                  Upgrade for unlimited cards and exclusive features.
-                </Text>
-
-                <PremiumFeaturesList />
-
-                <View style={styles.premiumPricing}>
-                  <TouchableOpacity style={styles.pricingOption}>
-                    <Text style={styles.pricingLabel}>Monthly</Text>
-                    <View style={styles.pricingAmount}>
-                      <Text style={styles.priceNumber}>$4.99</Text>
-                      <Text style={styles.pricePeriod}>/mo</Text>
-                    </View>
-                  </TouchableOpacity>
-                  
-                  <TouchableOpacity style={[styles.pricingOption, styles.pricingOptionBest]}>
-                    <View style={styles.bestValueBadge}>
-                      <Text style={styles.bestValueText}>SAVE $10</Text>
-                    </View>
-                    <Text style={styles.pricingLabel}>Yearly</Text>
-                    <View style={styles.pricingAmount}>
-                      <Text style={styles.priceNumber}>$49.99</Text>
-                      <Text style={styles.pricePeriod}>/yr</Text>
-                    </View>
-                  </TouchableOpacity>
-                </View>
-
-                <TouchableOpacity 
-                  style={styles.upgradeButton}
-                  onPress={handleUpgradePress}
-                  activeOpacity={0.7}
-                >
-                  <Text style={styles.upgradeButtonText}>Upgrade Now</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity 
-                  style={styles.laterButton}
-                  onPress={handleClosePremiumModal}
-                  activeOpacity={0.7}
-                >
-                  <Text style={styles.laterButtonText}>Maybe Later</Text>
-                </TouchableOpacity>
-              </ScrollView>
-            </View>
-          </View>
-        </Modal>
-      )}
+      <PremiumModal
+        visible={showPremiumModal}
+        onClose={() => setShowPremiumModal(false)}
+        onUpgrade={handleUpgradePress}
+      />
     </SafeAreaView>
   );
-}
-
-function formatDateForInput(date) {
-  return date.toISOString().split('T')[0];
 }
 
 const styles = StyleSheet.create({
